@@ -2,6 +2,8 @@
 using Blish_HUD.Controls;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Graphics.PackedVector;
+using SharpDX.Direct3D9;
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -12,43 +14,48 @@ namespace BhModule.Lang5
     public static class Utils
     {
         public static NotifyClass Notify = new NotifyClass();
-        public static void FindReadonlyStringRef(String str)
+        public static IntPtr FindReadonlyStringRef(String str)
         {
-            Encoding utf16Encoding = Encoding.Unicode;
-            String pattern = BitConverter.ToString(utf16Encoding.GetBytes(str)).Replace("-", "");
+            return Find.FindReadonlyStringRef(str, GameService.GameIntegration.Gw2Instance.Gw2Process);
         }
-  
+
     }
     public class UtilsExtern
     {
         [DllImport("kernel32.dll")]
         public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, [Out] byte[] lpBuffer, int nSize, out IntPtr lpNumberOfBytesRead);
-        
+
         [DllImport("kernel32.dll")]
         public static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int nSize, out int lpNumberOfBytesWritten);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr VirtualAllocEx(IntPtr hProcess, IntPtr lpAddress, int dwSize, int flAllocationType, int flProtect);
-        
+
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool VirtualFreeEx(IntPtr hProcess, IntPtr lpAddress, int dwSize, int dwFreeType);
     }
     public class Find
     {
-        internal static IntPtr FindPattern(string pattern, Process process, ProcessModule moudle = null)
+        public static IntPtr FindReadonlyStringRef(String str, Process process, ProcessModule module = null)
         {
-            if (moudle == null) moudle = process.MainModule;
+            Encoding utf8Encoding = Encoding.UTF8;
+            String pattern = BitConverter.ToString(utf8Encoding.GetBytes(str)).Replace("-", "");
+            return FindPattern(pattern, process, module);
+        }
+        public static IntPtr FindPattern(string pattern, Process process, ProcessModule module = null)
+        {
+            if (module == null) module = process.MainModule;
             string[] patternAry = PatternToAry(pattern);
 
 
-            int totalMemoryBytesSize = moudle.ModuleMemorySize;
-            IntPtr startAddr = moudle.BaseAddress;
-            IntPtr endAddr = IntPtr.Add(moudle.BaseAddress, totalMemoryBytesSize - patternAry.Length);
+            int totalMemoryBytesSize = module.ModuleMemorySize;
+            IntPtr startAddr = module.BaseAddress;
+            IntPtr endAddr = IntPtr.Add(module.BaseAddress, totalMemoryBytesSize - patternAry.Length);
 
 
             int pageSize = 6400000;
-            int remainSize = moudle.ModuleMemorySize / pageSize;
-            int maxPage = moudle.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
+            int remainSize = module.ModuleMemorySize / pageSize;
+            int maxPage = module.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
             int currentPage = 1;
 
 
@@ -58,7 +65,18 @@ namespace BhModule.Lang5
             {
                 IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
                 UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out bufferReadSize);
-                int index = IndexOfPattern(ref patternAry, ref buffer);
+                int index = -1;
+                if (pattern.IndexOf("?") == -1)
+                {
+                    var a = BitConverter.ToString(buffer).Replace("-", "");
+                    var len1 =a.Length;
+                    var len2 = buffer.Length;
+                    index = a.IndexOf(pattern);
+                }
+                else
+                {
+                    index = IndexOfPattern(ref patternAry, ref buffer);
+                }
                 if (index > -1) return IntPtr.Add(pageStartAddr, index);
                 currentPage += 1;
             } while (currentPage <= maxPage);

@@ -53,6 +53,7 @@ namespace BhModule.Lang5
 
         protected override void Update(GameTime gameTime)
         {
+            var a = GameService.GameIntegration.Gw2Instance.Gw2Process;
         }
 
         /// <inheritdoc />
