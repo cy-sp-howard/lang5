@@ -68,10 +68,7 @@ namespace BhModule.Lang5
                 int index = -1;
                 if (pattern.IndexOf("?") == -1)
                 {
-                    var a = BitConverter.ToString(buffer).Replace("-", "");
-                    var len1 =a.Length;
-                    var len2 = buffer.Length;
-                    index = a.IndexOf(pattern);
+                    index = BitConverter.ToString(buffer).Replace("-", "").IndexOf(pattern) / 2;
                 }
                 else
                 {
