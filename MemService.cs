@@ -6,35 +6,58 @@ using System.Linq;
 using System.Reflection.Emit;
 using System.Threading.Tasks;
 using Iced.Intel;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BhModule.Lang5
 {
     public class MemService
     {
         private readonly Lang5Module module;
+        private IntPtr ZHDataAddress;
         public MemService(Lang5Module module)
         {
             this.module = module;
-            if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) SetLangPtr();
-            GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { SetLangPtr(); };
+            if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
+            GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
+        }
+        public void Upadate() { }
+        public void Unload() {
+            Utils.FreeMemory(ZHDataAddress);
+        }
+        public void Init()
+        {
+            AllocZHData();
         }
         public void SetUILang()
         {
 
         }
-        private void SetLangPtr() {
+        private void SetLangPtr()
+        {
             var result = Utils.FindReadonlyStringRef("ValidateLanguage(language)");
             //var result2 = Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST");
             //IntPtr.Add(result2, 0x26);
             //"66 89 34 48 41 FF 46 14" =>  "E9 A1B0ADFF 0F1F 00" jmp
             // "66 89 34 48 41 FF 46 14"  "E9 494F5200" jmp back
 
-            IntPtr baseAddress = UtilsExtern.VirtualAllocEx(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, IntPtr.Zero,
-                                1000,
-                                0x00001000 | 0x00002000,
-                                0x40);
+            IntPtr baseAddress = Utils.AllocMemory(1000);
 
             HowTo_Disassemble.Example();
+        }
+        private void AllocZHData()
+        {
+            System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
+            ZHDataAddress = Utils.AllocMemory(40000);
+            List<byte> data_byte = new();
+            ZH[] data = JsonSerializer.Deserialize<ZH[]>(MapZH.text);
+            foreach (var item in data)
+            {
+                data_byte.AddRange(unicodeEncoding.GetBytes(item.In));
+                data_byte.AddRange(unicodeEncoding.GetBytes(item.Out));
+            }
+            byte[] data_byte_ary = data_byte.ToArray();
+            Utils.WriteMemory(ZHDataAddress, ref data_byte_ary);
         }
         private void GenFuncBytes()
         {
@@ -44,7 +67,13 @@ namespace BhModule.Lang5
 
         }
     }
-
+    public class ZH
+    {
+        [JsonPropertyName("o")]
+        public string Out { get; set; }
+        [JsonPropertyName("i")]
+        public string In { get; set; }
+    }
     static class HowTo_Disassemble
     {
         /*
@@ -65,7 +94,7 @@ namespace BhModule.Lang5
         */
         public static void Example()
         {
-            
+
             // You can also pass in a hex string, eg. "90 91 929394", or you can use your own CodeReader
             // reading data from a file or memory etc
             var codeBytes = exampleCode;

@@ -68,6 +68,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Lang5Module.cs" />
+    <Compile Include="MapZH.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>MapZH.resx</DependentUpon>
+    </Compile>
     <Compile Include="MemService.cs" />
     <Compile Include="ModuleSettings.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -86,6 +91,12 @@
   </ItemGroup>
   <ItemGroup>
     <WCFMetadata Include="Connected Services\" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="MapZH.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>MapZH.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

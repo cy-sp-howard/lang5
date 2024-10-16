@@ -18,6 +18,23 @@ namespace BhModule.Lang5
         {
             return Find.FindReadonlyStringRef(str, GameService.GameIntegration.Gw2Instance.Gw2Process);
         }
+        public static IntPtr AllocMemory(int size)
+        {
+            return UtilsExtern.VirtualAllocEx(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, IntPtr.Zero,
+                                 size,
+                                 0x00001000 | 0x00002000,
+                                 0x40);
+        }
+        public static bool FreeMemory(IntPtr address)
+        {
+            return UtilsExtern.VirtualFreeEx(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, address, 0, 0x8000);
+        }
+        public static bool WriteMemory(IntPtr lpBaseAddress, ref byte[] lpBuffer)
+        {
+            int bytesWritten;
+            return UtilsExtern.WriteProcessMemory(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, lpBaseAddress, lpBuffer, lpBuffer.Length, out bytesWritten);
+        }
+
 
     }
     public class UtilsExtern
