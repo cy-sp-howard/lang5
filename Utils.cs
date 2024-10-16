@@ -40,7 +40,43 @@ namespace BhModule.Lang5
         {
             Encoding utf8Encoding = Encoding.UTF8;
             String pattern = BitConverter.ToString(utf8Encoding.GetBytes(str)).Replace("-", "");
-            return FindPattern(pattern, process, module);
+            IntPtr stringAddress = FindPattern(pattern, process, module);
+            return FinRef(stringAddress, process, module);
+        }
+        public static IntPtr FinRef(IntPtr addr, Process process, ProcessModule module = null)
+        {
+            long addr_long = addr.ToInt64();
+            if (module == null) module = process.MainModule;
+            int totalMemoryBytesSize = module.ModuleMemorySize;
+            IntPtr startAddr = module.BaseAddress;
+            IntPtr endAddr = IntPtr.Add(module.BaseAddress, totalMemoryBytesSize);
+
+
+            int pageSize = 6400000;
+            int remainSize = module.ModuleMemorySize / pageSize;
+            int maxPage = module.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
+            int currentPage = 1;
+            byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
+            IntPtr bufferReadSize;
+            do
+            {
+                IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
+                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out bufferReadSize);
+                long pageStartAddr_long = pageStartAddr.ToInt64();
+                for (int i = 0; i < buffer.Length - 3; i++)
+                {
+                    long rip_long = pageStartAddr_long + i + 4;
+                    int currentValue = BitConverter.ToInt32(buffer, i);
+                    long followAddr_long = rip_long + currentValue;
+                    if (addr_long == followAddr_long)
+                    {
+                        return IntPtr.Add(pageStartAddr, i);
+                    };
+                }
+                currentPage += 1;
+            } while (currentPage <= maxPage);
+            return IntPtr.Zero;
+
         }
         public static IntPtr FindPattern(string pattern, Process process, ProcessModule module = null)
         {
@@ -68,7 +104,11 @@ namespace BhModule.Lang5
                 int index = -1;
                 if (pattern.IndexOf("?") == -1)
                 {
-                    index = BitConverter.ToString(buffer).Replace("-", "").IndexOf(pattern) / 2;
+                    int foundIndex = BitConverter.ToString(buffer).Replace("-", "").IndexOf(pattern);
+                    if (foundIndex > -1)
+                    {
+                        index = foundIndex / 2;
+                    }
                 }
                 else
                 {
@@ -108,6 +148,18 @@ namespace BhModule.Lang5
                 result[i] = ary[i + startIndex];
             }
             return result;
+        }
+        static bool isEqual(byte[] pattern, byte[] memory)
+        {
+            for (int i = 0; i < pattern.Length; i++)
+            {
+
+                if (pattern[i] != memory[i])
+                {
+                    return false;
+                }
+            }
+            return true;
         }
         static bool isEqual(string[] pattern, byte[] memory)
         {
