@@ -2,12 +2,15 @@
 using Blish_HUD.Controls;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Graphics.PackedVector;
-using SharpDX.Direct3D9;
 using System;
 using System.Diagnostics;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using Iced.Intel;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace BhModule.Lang5
 {
@@ -31,10 +34,89 @@ namespace BhModule.Lang5
         }
         public static bool WriteMemory(IntPtr lpBaseAddress, ref byte[] lpBuffer)
         {
-            int bytesWritten;
-            return UtilsExtern.WriteProcessMemory(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, lpBaseAddress, lpBuffer, lpBuffer.Length, out bytesWritten);
+            return UtilsExtern.WriteProcessMemory(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, lpBaseAddress, lpBuffer, lpBuffer.Length, out int bytesWritten);
         }
+        public static byte[] ReadMemory(IntPtr address, int size)
+        {
+            byte[] buffer = new byte[size];
+            UtilsExtern.ReadProcessMemory(GameService.GameIntegration.Gw2Instance.Gw2Process.Handle, address, buffer, buffer.Length, out IntPtr bufferReadSize);
+            return buffer;
+        }
+        public static void DetourMemory(IntPtr target, byte[] opcodeBytes)
+        {
 
+
+            ulong target_long = (ulong)target.ToInt64();
+            byte[] targetOpcodeBytes = Utils.ReadMemory(target, 100);
+            ByteArrayCodeReader codeReader = new(targetOpcodeBytes);
+            var decoder = Iced.Intel.Decoder.Create(64, codeReader);
+            decoder.IP = target_long;
+            List<Instruction> instructions = new();
+            while (decoder.IP < target_long + (ulong)targetOpcodeBytes.Length)
+                instructions.Add(decoder.Decode());
+
+
+            IntPtr detourAddr = AllocMemory(opcodeBytes.Length + targetOpcodeBytes.Length);
+            ulong detourAddr_long = (ulong)detourAddr.ToInt64();
+
+            var c = new Assembler(64);
+            c.jmp(detourAddr_long);
+            ListCodeWriter codeWriter = new();
+            c.Assemble(codeWriter, detourAddr_long);
+            byte[] jmpBytes = codeWriter.data.ToArray();
+
+            int currentIndex = 0;
+            List<byte> backUpBytes = new();
+            foreach (var item in instructions)
+            {
+                int startIndex = currentIndex;
+                for (; currentIndex < startIndex + item.Length; currentIndex++)
+                {
+                    backUpBytes.Add(targetOpcodeBytes[currentIndex]);
+                }
+                if (backUpBytes.Count >= jmpBytes.Length) break;
+            }
+
+            Trace.WriteLine("11");
+
+            // 解析目標
+            // 分配記憶體，產生 jmp newAddr
+            // 取得需要取代的部分
+            // 備份
+            // 產生newaddr 程式碼 並寫入newAddr
+            // 取得目標
+
+        }
+        static public void PrintOpcodes(byte[] bytes, IntPtr RIP)
+        {
+            ulong rip_long = (ulong)RIP.ToInt64();
+            var codeReader = new ByteArrayCodeReader(bytes);
+            var decoder = Iced.Intel.Decoder.Create(64, codeReader);
+            decoder.IP = rip_long;
+            var instructions = new List<Instruction>();
+            while (decoder.IP < rip_long + (ulong)bytes.Length)
+                instructions.Add(decoder.Decode());
+
+
+            var formatter = new IntelFormatter();
+            var output = new StringOutput();
+            foreach (var instr in instructions)
+            {
+                // Don't use instr.ToString(), it allocates more, uses masm syntax and default options
+                formatter.Format(instr, output);
+                Trace.Write(instr.IP.ToString("X16"));
+                Trace.Write(" ");
+                int instrLen = instr.Length;
+                int byteBaseIndex = (int)(instr.IP - rip_long);
+                for (int i = 0; i < instrLen; i++)
+                    Trace.Write(bytes[byteBaseIndex + i].ToString("X2"));
+                int missingBytes = 10 - instrLen;
+                for (int i = 0; i < missingBytes; i++)
+                    Trace.Write("  ");
+                Trace.Write(" ");
+                Trace.WriteLine(output.ToStringAndReset());
+            }
+        }
 
     }
     public class UtilsExtern
@@ -207,6 +289,13 @@ namespace BhModule.Lang5
             return true;
         }
     }
+    public class ListCodeWriter : CodeWriter
+    {
+        public IReadOnlyList<byte> data => allBytes;
+        readonly List<byte> allBytes = new();
+        public override void WriteByte(byte value) => allBytes.Add(value);
+
+    }
     public class NotifyClass : Control
     {
         private const float duration = 3000;
@@ -243,5 +332,9 @@ namespace BhModule.Lang5
         {
             return CaptureType.None;
         }
+    }
+    public class IcedUtils
+    {
+        public static void Show(string text) { }
     }
 }

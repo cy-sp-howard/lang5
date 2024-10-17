@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Iced.Intel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using static Iced.Intel.AssemblerRegisters;
 
 namespace BhModule.Lang5
 {
@@ -17,6 +18,14 @@ namespace BhModule.Lang5
         private IntPtr ZHDataAddress;
         public MemService(Lang5Module module)
         {
+            var c = new Assembler(64);
+            var l = c.CreateLabel();
+            c.jmp(__[rax]);
+            ListCodeWriter codeWriter = new();
+            c.Assemble(codeWriter, 0x0000700000000000);
+            byte[] jmpBytes = codeWriter.data.ToArray();
+            Utils.PrintOpcodes(jmpBytes,new IntPtr(0x0000700000000000));
+
             this.module = module;
             if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
             GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
@@ -28,6 +37,7 @@ namespace BhModule.Lang5
         public void Init()
         {
             AllocZHData();
+            AllocFuncBytes();
         }
         public void SetUILang()
         {
@@ -59,12 +69,13 @@ namespace BhModule.Lang5
             byte[] data_byte_ary = data_byte.ToArray();
             Utils.WriteMemory(ZHDataAddress, ref data_byte_ary);
         }
-        private void GenFuncBytes()
+        private void AllocFuncBytes()
         {
-            IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
-            var c = new Assembler(64);
-            var replaceCodeAddress = c.CreateLabel();
+            IntPtr setTextAddr = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
 
+            Utils.DetourMemory(setTextAddr, []);
+
+      
         }
     }
     public class ZH
