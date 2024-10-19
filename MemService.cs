@@ -35,7 +35,12 @@ namespace BhModule.Lang5
             if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
             GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
         }
-        public void Upadate() { }
+        public void Upadate()
+        {
+            if(loaded) return;
+            loaded = true;
+            OnLoaded?.Invoke(this, EventArgs.Empty);
+        }
         public void Unload()
         {
             if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning) return;
@@ -67,8 +72,6 @@ namespace BhModule.Lang5
         {
             WriteZHData();
             WriteFuncData();
-            loaded = true;
-            OnLoaded?.Invoke(this, EventArgs.Empty);
         }
         private void WriteZHData()
         {
