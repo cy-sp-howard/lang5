@@ -26,6 +26,8 @@ namespace BhModule.Lang5
         private IntPtr SetLangFuncAddress;
         private IntPtr CallFuncPtr => IntPtr.Add(InjectionCallerAddress, 100);
         private IntPtr OriginLangPtr;
+        private bool loaded = false;
+        public static event EventHandler OnLoaded;
         private OverwriteOpcodes TextConverterDetour;
         public MemService(Lang5Module module)
         {
@@ -47,10 +49,26 @@ namespace BhModule.Lang5
             Utils.FreeMemory(InjectionCallerAddress);
             Utils.FreeMemory(SetLangFuncAddress);
         }
-        public void Init()
+        public void SetZhUI(bool enable)
+        {
+            if (!loaded) return;
+            byte[] lang = enable ? [0x5] : Utils.ReadMemory(OriginLangPtr, 1);
+            FuncBuffer funcBuffer = new FuncBuffer { address = SetLangFuncAddress, arg0 = lang[0] };
+            Utils.WriteMemory(CallFuncPtr, funcBuffer.bytes);
+            Thread.Sleep(100);
+        }
+        public void SetCovert(bool enable)
+        {
+            if (!loaded) return;
+            if (enable) TextConverterDetour.Write();
+            else TextConverterDetour.Undo();
+        }
+        private void Init()
         {
             WriteZHData();
             WriteFuncData();
+            loaded = true;
+            OnLoaded?.Invoke(this, EventArgs.Empty);
         }
         private void WriteZHData()
         {
@@ -70,18 +88,6 @@ namespace BhModule.Lang5
             GenInjectionCaller();
             GenLangSetter();
             GenTextCoverter();
-        }
-        public void SetZhUI(bool enable)
-        {
-            byte[] lang = enable ? [0x5] : Utils.ReadMemory(OriginLangPtr, 1);
-            FuncBuffer funcBuffer = new FuncBuffer { address = SetLangFuncAddress, arg0 = lang[0] };
-            Utils.WriteMemory(CallFuncPtr, funcBuffer.bytes);
-            Thread.Sleep(100);
-        }
-        public void SetCovert(bool enable)
-        {
-            if (enable) TextConverterDetour.Write();
-            else TextConverterDetour.Undo();
         }
         private void GenLangSetter()
         {

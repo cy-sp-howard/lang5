@@ -32,6 +32,7 @@ namespace BhModule.Lang5
                 ChineseUI.Value = !ChineseUI.Value;
                 Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
             };
+            MemService.OnLoaded += delegate { module.memService.SetZhUI(ChineseUI.Value); };
 
             this.Cht = settings.DefineSetting(nameof(this.Cht), false, () => "Convert to Traditional Chinese", () => "");
             this.Cht.SettingChanged += (sender, args) => { module.memService.SetCovert(Cht.Value); };
@@ -42,6 +43,7 @@ namespace BhModule.Lang5
                 Cht.Value = !Cht.Value;
                 Utils.Notify.Show(Cht.Value ? "Enable covert to Traditional Chinese." : "Disable covert to Traditional Chinese.");
             };
+            MemService.OnLoaded += delegate { module.memService.SetCovert(Cht.Value); };
         }
     }
 }
