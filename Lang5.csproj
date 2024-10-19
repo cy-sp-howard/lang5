@@ -101,4 +101,17 @@
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <Lang5BhmPath>$(OutDir)$(ProjectName).bhm</Lang5BhmPath>
+    <TempPath>$(OutDir).bhm</TempPath>
+  </PropertyGroup>
+  <Target Name="BuildLang5Module" AfterTargets="Build">
+    <Delete Files="$(Lang5BhmPath)" />
+    <Copy SourceFiles="$(OutDir)$(ProjectName).dll" DestinationFolder="$(TempPath)" />
+    <Copy SourceFiles="$(OutDir)manifest.json" DestinationFolder="$(TempPath)" />
+    <Copy SourceFiles="$(OutDir)Iced.dll" DestinationFolder="$(TempPath)" />
+    <ZipDirectory SourceDirectory="$(TempPath)" DestinationFile="$(Lang5BhmPath)" Overwrite="true" />
+    <RemoveDir Directories="$(TempPath)" />
+  </Target>
+
 </Project>
