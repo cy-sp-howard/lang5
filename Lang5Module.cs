@@ -49,8 +49,6 @@ namespace BhModule.Lang5
             this.memService = new MemService(this);
         }
 
-
-
         protected override void Update(GameTime gameTime)
         {
             this.memService.Upadate();

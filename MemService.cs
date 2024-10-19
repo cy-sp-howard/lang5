@@ -14,15 +14,16 @@ using System.Net;
 using System.Runtime.InteropServices;
 using Gw2Sharp.WebApi.V2.Models;
 using System.Threading;
+using Gw2Sharp.Models;
 
 namespace BhModule.Lang5
 {
     public class MemService
     {
         private readonly Lang5Module module;
+        private IntPtr InjectionCallerAddress;
         private IntPtr ZHDataAddress;
         private IntPtr ZHFuncAddress;
-        private IntPtr InjectionCallerAddress;
         private IntPtr SetLangFuncAddress;
         private IntPtr CallFuncPtr => IntPtr.Add(InjectionCallerAddress, 100);
         private IntPtr OriginLangPtr;
@@ -37,7 +38,7 @@ namespace BhModule.Lang5
         }
         public void Upadate()
         {
-            if(loaded) return;
+            if (loaded) return;
             loaded = true;
             OnLoaded?.Invoke(this, EventArgs.Empty);
         }
@@ -50,9 +51,9 @@ namespace BhModule.Lang5
                 item.Undo();
             }
             Utils.FreeMemory(ZHDataAddress);
-            Utils.FreeMemory(ZHFuncAddress);
             Utils.FreeMemory(InjectionCallerAddress);
             Utils.FreeMemory(SetLangFuncAddress);
+            Utils.FreeMemory(ZHFuncAddress);
         }
         public void SetZhUI(bool enable)
         {
@@ -81,6 +82,7 @@ namespace BhModule.Lang5
             ZH[] data = JsonSerializer.Deserialize<ZH[]>(MapZH.text);
             foreach (var item in data)
             {
+                if (item.In.Length > 1) continue;
                 data_byte.AddRange(unicodeEncoding.GetBytes(item.In));
                 data_byte.AddRange(unicodeEncoding.GetBytes(item.Out));
             }
@@ -91,29 +93,6 @@ namespace BhModule.Lang5
             GenInjectionCaller();
             GenLangSetter();
             GenTextCoverter();
-        }
-        private void GenLangSetter()
-        {
-            IntPtr parentBlock = Utils.FindReadonlyStringRef("ValidateLanguage(language)");
-            OriginLangPtr = Utils.FollowAddress(IntPtr.Add(parentBlock, 0xb));
-            IntPtr targetFuncAddress = Utils.FollowAddress(IntPtr.Add(parentBlock, 0x24));
-            SetLangFuncAddress = AllocNearMemory(100);
-
-            ListCodeWriter codeWriter = new();
-            var c = new Assembler(64);
-            c.push(rbx);
-            c.push(rsp);
-            c.push(rcx);
-            c.push(rdx);
-            c.AddInstruction(Instruction.CreateBranch(Code.Call_rel32_64, (ulong)targetFuncAddress.ToInt64()));
-            c.pop(rdx);
-            c.pop(rcx);
-            c.pop(rsp);
-            c.pop(rbx);
-            c.ret();
-            c.Assemble(codeWriter, (ulong)SetLangFuncAddress.ToInt64());
-
-            Utils.WriteMemory(SetLangFuncAddress, codeWriter.data.ToArray());
         }
         private void GenInjectionCaller()
         {
@@ -161,9 +140,34 @@ namespace BhModule.Lang5
             callDetour.Write();
 
         }
+        private void GenLangSetter()
+        {
+            IntPtr parentBlock = Utils.FindReadonlyStringRef("ValidateLanguage(language)");
+            OriginLangPtr = Utils.FollowAddress(IntPtr.Add(parentBlock, 0xb));
+            IntPtr targetFuncAddress = Utils.FollowAddress(IntPtr.Add(parentBlock, 0x24));
+            SetLangFuncAddress = AllocNearMemory(100);
+
+            ListCodeWriter codeWriter = new();
+            var c = new Assembler(64);
+            c.push(rbx);
+            c.push(rsp);
+            c.push(rcx);
+            c.push(rdx);
+            c.AddInstruction(Instruction.CreateBranch(Code.Call_rel32_64, (ulong)targetFuncAddress.ToInt64()));
+            c.pop(rdx);
+            c.pop(rcx);
+            c.pop(rsp);
+            c.pop(rbx);
+            c.ret();
+            c.Assemble(codeWriter, (ulong)SetLangFuncAddress.ToInt64());
+
+            Utils.WriteMemory(SetLangFuncAddress, codeWriter.data.ToArray());
+        }
         private void GenTextCoverter()
         {
-            ZHFuncAddress = AllocNearMemory(100);
+            ZHFuncAddress = AllocNearMemory(200); // 100+ for collect whole word
+            IntPtr wordAddress = IntPtr.Add(ZHFuncAddress, 100);
+
             IntPtr target = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
             TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, ZHFuncAddress));
@@ -176,17 +180,21 @@ namespace BhModule.Lang5
 
             c.push(rdi);
             c.push(rax);
+            c.push(r14);
+            c.mov(r14, wordAddress.ToInt64());
+            c.mov(__qword_ptr[r14 + rcx * 0x2], si);
             c.mov(rdi, ZHDataAddress.ToInt64());
             c.Label(ref loopStartlabel);
             c.mov(rax, __qword_ptr[rdi]);
-            c.lea(rdi, __qword_ptr[rdi + 4]);
+            c.lea(rdi, __qword_ptr[rdi + 0x4]);
             c.test(ax, ax);
             c.je(endLabel);
             c.cmp(si, ax);
             c.jne(loopStartlabel);
-            c.lea(rdi, __qword_ptr[rdi - 2]);
+            c.lea(rdi, __qword_ptr[rdi - 0x2]);
             c.mov(si, __qword_ptr[rdi]);
             c.Label(ref endLabel);
+            c.pop(r14);
             c.pop(rax);
             c.pop(rdi);
             foreach (var item in TextConverterDetour.BackupInstructions)
@@ -197,8 +205,8 @@ namespace BhModule.Lang5
             c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
 
             c.Assemble(codeWriter, (ulong)ZHFuncAddress.ToInt64());
+            //Utils.PrintOpcodes(codeWriter.data.ToArray(), ZHFuncAddress);
             Utils.WriteMemory(ZHFuncAddress, codeWriter.data.ToArray());
-            //Utils.PrintOpcodes(funcBytes.ToArray(), rip);
         }
         private byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
         {
@@ -255,7 +263,7 @@ namespace BhModule.Lang5
             List<byte> overwriteOpcodes = overwriteBytes.ToList();
 
             int atLeastbackupSize = overwriteBytes.Length;
-            List<Instruction>  originBytesInstructions = Utils.ParseOpcodes(originBytes.ToArray(), address);
+            List<Instruction> originBytesInstructions = Utils.ParseOpcodes(originBytes.ToArray(), address);
             List<Instruction> backupInstructions = new();
 
             for (int row = 0; backupOpcodes.Count < atLeastbackupSize; row++)

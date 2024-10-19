@@ -85,7 +85,7 @@ namespace BhModule.Lang5
                 int byteBaseIndex = (int)(instr.IP - rip_long);
                 for (int i = 0; i < instrLen; i++)
                     Trace.Write(bytes[byteBaseIndex + i].ToString("X2") + " ");
-                int missingSpaces = 20 - instrLen * 3;
+                int missingSpaces = 30 - instrLen * 3;
                 for (int i = 0; i < missingSpaces; i++)
                     Trace.Write(" ");
                 Trace.Write(" ");
