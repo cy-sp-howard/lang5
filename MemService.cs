@@ -71,10 +71,10 @@ namespace BhModule.Lang5
         }
         private void Init()
         {
-            WriteZHData();
+            WriteTextData();
             WriteFuncData();
         }
-        private void WriteZHData()
+        private void WriteTextData()
         {
             System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
             TextDataAddress = Utils.AllocMemory(40000);
@@ -82,9 +82,11 @@ namespace BhModule.Lang5
             ZH[] data = JsonSerializer.Deserialize<ZH[]>(MapZH.text);
             foreach (var item in data)
             {
-                if (item.In.Length > 1) continue;
-                data_byte.AddRange(unicodeEncoding.GetBytes(item.In));
-                data_byte.AddRange(unicodeEncoding.GetBytes(item.Out));
+                byte[] inBytes = unicodeEncoding.GetBytes(item.In);
+                byte[] outBytes = unicodeEncoding.GetBytes(item.Out);
+                if (inBytes.Length != 2 || outBytes.Length != 2) continue;
+                data_byte.AddRange(inBytes);
+                data_byte.AddRange(outBytes);
             }
             Utils.WriteMemory(TextDataAddress, data_byte.ToArray());
         }
@@ -177,7 +179,10 @@ namespace BhModule.Lang5
             var c = new Assembler(64);
             var loopStartlabel = c.CreateLabel();
             var endLabel = c.CreateLabel();
+            var originOpcodesLabel = c.CreateLabel();
 
+            c.cmp(si, 0x4e00);
+            c.jb(originOpcodesLabel);
             c.push(rdi);
             c.push(rax);
             c.push(r14);
@@ -197,7 +202,8 @@ namespace BhModule.Lang5
             c.Label(ref endLabel);
             c.pop(r14);
             c.pop(rax);
-            c.pop(rdi);
+            c.pop(rdi); ;
+            c.Label(ref originOpcodesLabel);
             foreach (var item in TextConverterDetour.BackupInstructions)
             {
                 c.AddInstruction(item);
