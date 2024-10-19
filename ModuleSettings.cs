@@ -14,6 +14,8 @@ namespace BhModule.Lang5
         private readonly Lang5Module module;
         public SettingEntry<KeyBinding> ChineseUIKey { get; private set; }
         public SettingEntry<bool> ChineseUI { get; private set; }
+        public SettingEntry<KeyBinding> ChtKey { get; private set; }
+        public SettingEntry<bool> Cht { get; private set; }
         public ModuleSettings(Lang5Module module, SettingCollection settings)
         {
             this.module = module;
@@ -22,13 +24,22 @@ namespace BhModule.Lang5
         private void InitUISetting(SettingCollection settings)
         {
             this.ChineseUI = settings.DefineSetting(nameof(this.ChineseUI), false, () => "Use Chinese UI", () => "");
-            this.ChineseUI.SettingChanged += (sender, args) => { module.memService.SetUILang(); };
-            this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.O), () => "Toggle Chinese UI", () => "");
+            this.ChineseUI.SettingChanged += (sender, args) => { module.memService.SetZhUI(ChineseUI.Value); };
+            this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
             this.ChineseUIKey.Value.Enabled = true;
             this.ChineseUIKey.Value.Activated += (sender, args) =>
             {
                 ChineseUI.Value = !ChineseUI.Value;
                 Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
+            };
+
+            this.Cht = settings.DefineSetting(nameof(this.Cht), false, () => "Convert to Traditional Chinese", () => "");
+            this.Cht.SettingChanged += (sender, args) => { module.memService.SetCovert(Cht.Value); };
+            this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
+            this.ChtKey.Value.Enabled = true;
+            this.ChtKey.Value.Activated += (sender, args) =>
+            {
+                Cht.Value = !Cht.Value;
             };
         }
     }

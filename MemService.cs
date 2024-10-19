@@ -10,6 +10,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using static Iced.Intel.AssemblerRegisters;
 using System.ServiceModel.Channels;
+using System.Net;
+using System.Runtime.InteropServices;
+using Gw2Sharp.WebApi.V2.Models;
+using System.Threading;
 
 namespace BhModule.Lang5
 {
@@ -18,9 +22,11 @@ namespace BhModule.Lang5
         private readonly Lang5Module module;
         private IntPtr ZHDataAddress;
         private IntPtr ZHFuncAddress;
-        private IntPtr detourTarget;
-        private List<byte> backupOpcodes;
-        private List<byte> detourOpcodes;
+        private IntPtr InjectionCallerAddress;
+        private IntPtr SetLangFuncAddress;
+        private IntPtr CallFuncPtr => IntPtr.Add(InjectionCallerAddress, 100);
+        private IntPtr OriginLangPtr;
+        private OverwriteOpcodes TextConverterDetour;
         public MemService(Lang5Module module)
         {
             this.module = module;
@@ -31,30 +37,20 @@ namespace BhModule.Lang5
         public void Unload()
         {
             if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning) return;
-            Restore();
+            SetZhUI(false);
+            foreach (var item in OverwriteOpcodes.All)
+            {
+                item.Undo();
+            }
             Utils.FreeMemory(ZHDataAddress);
             Utils.FreeMemory(ZHFuncAddress);
+            Utils.FreeMemory(InjectionCallerAddress);
+            Utils.FreeMemory(SetLangFuncAddress);
         }
         public void Init()
         {
-            SetLangPtr();
             WriteZHData();
             WriteFuncData();
-        }
-        public void SetUILang()
-        {
-
-        }
-        private void SetLangPtr()
-        {
-            IntPtr layer0 = Utils.FindReadonlyStringRef("ValidateLanguage(language)");
-            IntPtr layer2 = Utils.FollowAddress(IntPtr.Add(layer0, 0x24));
-            IntPtr targetFuncAddress = Utils.FollowAddress(IntPtr.Add(layer2, 0x9));
-
-            Utils.ReadMemory(IntPtr.Add(targetFuncAddress, 0x10), 1);
-            Utils.ReadMemory(IntPtr.Add(targetFuncAddress, 0x13), 4);
-
-            IntPtr baseAddress = Utils.AllocMemory(1000);
         }
         private void WriteZHData()
         {
@@ -71,36 +67,110 @@ namespace BhModule.Lang5
         }
         private void WriteFuncData()
         {
-            var mainModule = GameService.GameIntegration.Gw2Instance.Gw2Process.MainModule;
-            ZHFuncAddress = Utils.AllocMemory(100, IntPtr.Add(mainModule.BaseAddress, int.MinValue + mainModule.ModuleMemorySize));
-            detourTarget = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
-            GenDetourOpcodes(detourTarget);
-            byte[] funcBytes = GenFuncOpcodes(IntPtr.Add(detourTarget, backupOpcodes.Count));
+            GenInjectionCaller();
+            GenLangSetter();
 
-            Utils.WriteMemory(ZHFuncAddress, funcBytes);
+            GenJmpTextConverter();
+            GenTextCoverter();
         }
-        private void GenDetourOpcodes(IntPtr target)
+        public void SetZhUI(bool enable)
         {
-            ulong setTextAddr_long = (ulong)target.ToInt64();
-            byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
-            var setTextInstructions = Utils.ParseOpcodes(setTextOpcodeBytes, target);
+            byte[] lang = enable ? [0x5] : Utils.ReadMemory(OriginLangPtr, 1);
+            FuncBuffer funcBuffer = new FuncBuffer { address = SetLangFuncAddress, arg0 = lang[0] };
+            Utils.WriteMemory(CallFuncPtr, funcBuffer.bytes);
+            Thread.Sleep(100);
+        }
+        public void SetCovert(bool enable)
+        {
+            if (enable) TextConverterDetour.Write();
+            else TextConverterDetour.Undo();
+        }
+        private void GenLangSetter()
+        {
+            IntPtr parentBlock = Utils.FindReadonlyStringRef("ValidateLanguage(language)");
+            OriginLangPtr = Utils.FollowAddress(IntPtr.Add(parentBlock, 0xb));
+            IntPtr targetFuncAddress = Utils.FollowAddress(IntPtr.Add(parentBlock, 0x24));
+            SetLangFuncAddress = AllocNearMemory(100);
 
-            backupOpcodes = new();
-            List<byte> jmpFuncBytes = GenJmpRelAdrressBytes(target, ZHFuncAddress).ToList();
-            for (int row = 0; backupOpcodes.Count < jmpFuncBytes.Count; row++)
+            ListCodeWriter codeWriter = new();
+            var c = new Assembler(64);
+            c.push(rbx);
+            c.push(rsp);
+            c.push(rcx);
+            c.push(rdx);
+            c.AddInstruction(Instruction.CreateBranch(Code.Call_rel32_64, (ulong)targetFuncAddress.ToInt64()));
+            c.pop(rdx);
+            c.pop(rcx);
+            c.pop(rsp);
+            c.pop(rbx);
+            c.ret();
+            c.Assemble(codeWriter, (ulong)SetLangFuncAddress.ToInt64());
+
+            Utils.WriteMemory(SetLangFuncAddress, codeWriter.data.ToArray());
+        }
+        private void GenInjectionCaller()
+        {
+     
+            IntPtr callAddress = IntPtr.Add(Utils.FindReadonlyStringRef("ViewAdvanceText"), -0x8);
+            byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
+            InjectionCallerAddress = AllocNearMemory(200); // after +100 for buffer
+            OverwriteOpcodes callDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, InjectionCallerAddress));
+
+         
+
+
+            IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
+            ListCodeWriter codeWriter = new();
+            var c = new Assembler(64);
+            var endLabel = c.CreateLabel();
+            c.push(rax);
+            c.push(rbx);
+            c.push(rcx);
+            c.push(rdx);
+            c.push(r8);
+            c.push(r9);
+            c.mov(rbx, CallFuncPtr.ToInt64());
+            c.mov(rax, __qword_ptr[rbx]);
+            c.test(rax, rax);
+            c.je(endLabel);
+            c.mov(rcx, __qword_ptr[rbx + 0x8]);
+            c.mov(rdx, __qword_ptr[rbx + 0x10]);
+            c.mov(r8, __qword_ptr[rbx + 0x18]);
+            c.mov(r9, __qword_ptr[rbx + 0x20]);
+            c.call(rax);
+            c.mov(__qword_ptr[rbx], 0x0);
+            c.Label(ref endLabel);
+            c.pop(r9);
+            c.pop(r8);
+            c.pop(rdx);
+            c.pop(rcx);
+            c.pop(rbx);
+            c.pop(rax);
+            foreach (var item in callDetour.BackupInstructions)
             {
-                for (int i = backupOpcodes.Count, i_start = backupOpcodes.Count; i < i_start + setTextInstructions[row].Length; i++)
-                {
-                    backupOpcodes.Add(setTextOpcodeBytes[i]);
-                    if (i > jmpFuncBytes.Count - 1) jmpFuncBytes.Add(0x90);
-                }
+                c.AddInstruction(item);
             }
-            detourOpcodes = jmpFuncBytes;
+            c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
+
+            c.Assemble(codeWriter, (ulong)InjectionCallerAddress.ToInt64());
+            //Utils.PrintOpcodes(codeWriter.data.ToArray(), InjectionCallerAddress);
+            Utils.WriteMemory(InjectionCallerAddress, codeWriter.data.ToArray());
+            callDetour.Write();
 
         }
-        private byte[] GenFuncOpcodes(IntPtr backAddress)
+        private void GenJmpTextConverter()
+        {
+
+            ZHFuncAddress = AllocNearMemory(100);
+            IntPtr target = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
+            byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
+
+            TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, ZHFuncAddress));
+        }
+        private void GenTextCoverter()
         {
             IntPtr rip = ZHFuncAddress;
+            IntPtr backAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
             var c = new Assembler(64);
             var loopStartlabel = c.CreateLabel();
@@ -121,31 +191,119 @@ namespace BhModule.Lang5
             c.Label(ref endLabel);
             c.pop(rax);
             c.pop(rdi);
+            foreach (var item in TextConverterDetour.BackupInstructions)
+            {
+                c.AddInstruction(item);
+            }
+            //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
+            c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)backAddress.ToInt64()));
 
             c.Assemble(codeWriter, (ulong)rip.ToInt64());
-            List<byte> funcBytes = codeWriter.data.ToList();
-            funcBytes.AddRange(backupOpcodes);
-
-            byte[] jmpBytes = GenJmpRelAdrressBytes(IntPtr.Add(rip, funcBytes.Count), backAddress);
-            funcBytes.AddRange(jmpBytes);
-
-            //Utils.PrintOpcodes(funcBytesWithJmp.ToArray(), rip);
-
-            return funcBytes.ToArray();
-        }
-        private void Detour()
-        {
-            Utils.WriteMemory(detourTarget, detourOpcodes.ToArray());
-        }
-        private void Restore()
-        {
-            Utils.WriteMemory(detourTarget, backupOpcodes.ToArray());
+            Utils.WriteMemory(ZHFuncAddress, codeWriter.data.ToArray());
+            //Utils.PrintOpcodes(funcBytes.ToArray(), rip);
         }
         private byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
         {
             List<byte> list = new List<byte>();
             list.Add(0xe9);
             list.AddRange(BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5))));
+            return list.ToArray();
+        }
+        private IntPtr AllocNearMemory(int size)
+        {
+            var mainModule = GameService.GameIntegration.Gw2Instance.Gw2Process.MainModule;
+            IntPtr tryAddr = IntPtr.Add(mainModule.BaseAddress, int.MinValue + mainModule.ModuleMemorySize);
+            while (tryAddr.ToInt64() < mainModule.BaseAddress.ToInt64())
+            {
+                IntPtr result = Utils.AllocMemory(size, tryAddr);
+                if (result != IntPtr.Zero) return result;
+                tryAddr = IntPtr.Add(tryAddr, size);
+            }
+            return IntPtr.Zero;
+        }
+
+    }
+    public class FuncBuffer
+    {
+        public IntPtr address;
+        public long arg0;
+        public long arg1;
+        public long arg2;
+        public long arg3;
+        public byte[] bytes
+        {
+            get
+            {
+                List<byte> _bytes = new List<byte>();
+                _bytes.AddRange(BitConverter.GetBytes(address.ToInt64()));
+                _bytes.AddRange(BitConverter.GetBytes(arg0));
+                _bytes.AddRange(BitConverter.GetBytes(arg1));
+                _bytes.AddRange(BitConverter.GetBytes(arg2));
+                _bytes.AddRange(BitConverter.GetBytes(arg3));
+                return _bytes.ToArray();
+            }
+        }
+    }
+    public class OverwriteOpcodes
+    {
+        public static List<OverwriteOpcodes> All = new();
+        public readonly IReadOnlyList<byte> BackupBytes;
+        public readonly IReadOnlyList<byte> OverwriteBytes;
+        public readonly IReadOnlyList<Instruction> BackupInstructions;
+        public readonly IntPtr Address;
+        public OverwriteOpcodes(IntPtr address, byte[] originBytes, byte[] overwriteBytes)
+        {
+            List<byte> backupOpcodes = new();
+            List<byte> overwriteOpcodes = overwriteBytes.ToList();
+
+            int atLeastbackupSize = overwriteBytes.Length;
+            List<Instruction>  originBytesInstructions = Utils.ParseOpcodes(originBytes.ToArray(), address);
+            List<Instruction> backupInstructions = new();
+
+            for (int row = 0; backupOpcodes.Count < atLeastbackupSize; row++)
+            {
+                backupInstructions.Add(originBytesInstructions[row]);
+                for (int i = backupOpcodes.Count, i_start = backupOpcodes.Count; i < i_start + originBytesInstructions[row].Length; i++)
+                {
+                    backupOpcodes.Add(originBytes[i]);
+                    if (i > atLeastbackupSize - 1) overwriteOpcodes.Add(0x90);
+                }
+            }
+
+            this.Address = address;
+            this.BackupBytes = backupOpcodes;
+            this.OverwriteBytes = overwriteOpcodes;
+            this.BackupInstructions = backupInstructions;
+            All.Add(this);
+        }
+        public void Write()
+        {
+            Utils.WriteMemory(Address, OverwriteBytes.ToArray());
+        }
+        public void Undo()
+        {
+            Utils.WriteMemory(Address, BackupBytes.ToArray());
+
+        }
+
+    }
+    public class BackupOpcodes
+    {
+        static List<BackupOpcodes> all = new();
+        List<byte> list = new();
+        IntPtr address;
+        public int Count => list.Count;
+        public BackupOpcodes(IntPtr address)
+        {
+            this.address = address;
+            all.Add(this);
+        }
+        public void Add(byte i)
+        {
+            list.Add(i);
+        }
+        public byte[] ToArray()
+        {
             return list.ToArray();
         }
     }

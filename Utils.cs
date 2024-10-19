@@ -131,11 +131,10 @@ namespace BhModule.Lang5
             int maxPage = module.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
             int currentPage = 1;
             byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
-            IntPtr bufferReadSize;
             do
             {
                 IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
-                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out bufferReadSize);
+                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out IntPtr bufferReadSize);
                 long pageStartAddr_long = pageStartAddr.ToInt64();
                 for (int i = 0; i < buffer.Length - 3; i++)
                 {
@@ -170,11 +169,10 @@ namespace BhModule.Lang5
 
 
             byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
-            IntPtr bufferReadSize;
             do
             {
                 IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
-                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out bufferReadSize);
+                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out IntPtr bufferReadSize);
                 int index = -1;
                 if (pattern.IndexOf("?") == -1)
                 {
@@ -210,7 +208,7 @@ namespace BhModule.Lang5
             if (source.Length < pattern.Length) { return -1; }
             for (int i = 0; i <= source.Length - pattern.Length; i++)
             {
-                if (isEqual(pattern, SubAry(ref source, i, pattern.Length))) return i;
+                if (IsEqual(pattern, SubAry(ref source, i, pattern.Length))) return i;
             }
             return -1;
         }
@@ -223,7 +221,7 @@ namespace BhModule.Lang5
             }
             return result;
         }
-        static bool isEqual(byte[] pattern, byte[] memory)
+        static bool IsEqual(byte[] pattern, byte[] memory)
         {
             for (int i = 0; i < pattern.Length; i++)
             {
@@ -235,7 +233,7 @@ namespace BhModule.Lang5
             }
             return true;
         }
-        static bool isEqual(string[] pattern, byte[] memory)
+        static bool IsEqual(string[] pattern, byte[] memory)
         {
             string patternString = String.Join("", pattern);
             if (patternString.IndexOf("?") == -1)
