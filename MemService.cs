@@ -69,8 +69,6 @@ namespace BhModule.Lang5
         {
             GenInjectionCaller();
             GenLangSetter();
-
-            GenJmpTextConverter();
             GenTextCoverter();
         }
         public void SetZhUI(bool enable)
@@ -110,14 +108,10 @@ namespace BhModule.Lang5
         }
         private void GenInjectionCaller()
         {
-     
             IntPtr callAddress = IntPtr.Add(Utils.FindReadonlyStringRef("ViewAdvanceText"), -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
             InjectionCallerAddress = AllocNearMemory(200); // after +100 for buffer
             OverwriteOpcodes callDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, InjectionCallerAddress));
-
-         
-
 
             IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
@@ -158,19 +152,14 @@ namespace BhModule.Lang5
             callDetour.Write();
 
         }
-        private void GenJmpTextConverter()
+        private void GenTextCoverter()
         {
-
             ZHFuncAddress = AllocNearMemory(100);
             IntPtr target = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
-
             TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, ZHFuncAddress));
-        }
-        private void GenTextCoverter()
-        {
-            IntPtr rip = ZHFuncAddress;
-            IntPtr backAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
+            IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
+
             ListCodeWriter codeWriter = new();
             var c = new Assembler(64);
             var loopStartlabel = c.CreateLabel();
@@ -196,9 +185,9 @@ namespace BhModule.Lang5
                 c.AddInstruction(item);
             }
             //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
-            c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)backAddress.ToInt64()));
+            c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
 
-            c.Assemble(codeWriter, (ulong)rip.ToInt64());
+            c.Assemble(codeWriter, (ulong)ZHFuncAddress.ToInt64());
             Utils.WriteMemory(ZHFuncAddress, codeWriter.data.ToArray());
             //Utils.PrintOpcodes(funcBytes.ToArray(), rip);
         }
