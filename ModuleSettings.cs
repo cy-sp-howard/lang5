@@ -40,6 +40,7 @@ namespace BhModule.Lang5
             this.ChtKey.Value.Activated += (sender, args) =>
             {
                 Cht.Value = !Cht.Value;
+                Utils.Notify.Show(Cht.Value ? "Enable covert to Traditional Chinese." : "Disable covert to Traditional Chinese.");
             };
         }
     }
