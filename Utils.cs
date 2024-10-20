@@ -304,12 +304,4 @@ namespace BhModule.Lang5
             return CaptureType.None;
         }
     }
-    public class IcedUtils
-    {
-        public static byte[] GetAddressBytes(IntPtr addr, IntPtr rip)
-        {
-            long val = addr.ToInt64() - rip.ToInt64();
-            return BitConverter.GetBytes((int)val);
-        }
-    }
 }

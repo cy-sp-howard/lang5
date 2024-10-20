@@ -71,7 +71,7 @@ namespace BhModule.Lang5
             System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
             TextDataAddress = Utils.AllocMemory(40000);
             List<byte> data_byte = new();
-            ZH[] data = JsonSerializer.Deserialize<ZH[]>(MapZH.text);
+            TextJsonItem[] data = JsonSerializer.Deserialize<TextJsonItem[]>(MapText.text);
             foreach (var item in data)
             {
                 byte[] inBytes = unicodeEncoding.GetBytes(item.In);
@@ -312,11 +312,63 @@ namespace BhModule.Lang5
             return list.ToArray();
         }
     }
-    public class ZH
+    public class TextJsonItem
     {
         [JsonPropertyName("o")]
         public string Out { get; set; }
         [JsonPropertyName("i")]
         public string In { get; set; }
+    }
+    public class TextDataItem
+    {
+        public readonly string In;
+        public readonly string Out;
+        public readonly int Length;
+        public readonly short CategoryKey;
+        public readonly byte[] Bytes;
+        TextDataItem(string In, string Out)
+        {
+            this.In = In;
+            this.Out = Out;
+            this.Length = In.Length;
+            this.CategoryKey = BitConverter.ToInt16(BitConverter.GetBytes(In[Length - 1]),0);
+
+            /*
+                struct {
+                    int textLength;
+                    char[textLength] in;
+                    char[textLength] out;
+                };
+             */
+            System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
+            List<byte> bytes = new();
+            bytes.AddRange(BitConverter.GetBytes(this.Length));
+            bytes.AddRange(unicodeEncoding.GetBytes(this.In));
+            bytes.AddRange(unicodeEncoding.GetBytes(this.Out));
+            this.Bytes = bytes.ToArray();
+        }
+    }
+    public class TextDataCategory(short key)
+    {
+        public static IReadOnlyList<TextDataCategory> All => _all;
+        public static List<TextDataCategory> _all = new();
+        public readonly short Key = key;
+        public List<TextDataItem> List= new();
+        public readonly int Size;
+        public readonly byte[] Bytes;
+        public static void AutoSort(TextDataItem item)
+        {
+            foreach (var c in All)
+            {
+                if(c.Key == item.CategoryKey)
+                {
+                    c.List.Add(item);
+                    return;
+                }
+            }
+            TextDataCategory category = new(item.CategoryKey);
+            category.List.Add(item);
+            _all.Add(category);
+        }
     }
 }

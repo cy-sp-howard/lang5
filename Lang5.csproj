@@ -70,10 +70,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Lang5Module.cs" />
-    <Compile Include="MapZH.Designer.cs">
+    <Compile Include="MapText.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
-      <DependentUpon>MapZH.resx</DependentUpon>
+      <DependentUpon>MapText.resx</DependentUpon>
     </Compile>
     <Compile Include="MemService.cs" />
     <Compile Include="ModuleSettings.cs" />
@@ -95,9 +95,9 @@
     <WCFMetadata Include="Connected Services\" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="MapZH.resx">
+    <EmbeddedResource Include="MapText.resx">
       <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>MapZH.Designer.cs</LastGenOutput>
+      <LastGenOutput>MapText.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
@@ -113,5 +113,4 @@
     <ZipDirectory SourceDirectory="$(TempPath)" DestinationFile="$(Lang5BhmPath)" Overwrite="true" />
     <RemoveDir Directories="$(TempPath)" />
   </Target>
-
 </Project>

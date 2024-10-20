@@ -58,7 +58,6 @@ namespace BhModule.Lang5
         /// <inheritdoc />
         protected override void Unload()
         {
-
             this.memService.Unload();
         }
 
