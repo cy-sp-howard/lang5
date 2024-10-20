@@ -333,7 +333,7 @@ namespace BhModule.Lang5
             this.In = In;
             this.Out = Out;
             this.Length = In.Length;
-            this.CategoryKey = BitConverter.ToInt16(BitConverter.GetBytes(In[Length - 1]),0);
+            this.CategoryKey = BitConverter.ToInt16(BitConverter.GetBytes(In[Length - 1]), 0);
 
             /*
                 struct {
@@ -345,20 +345,25 @@ namespace BhModule.Lang5
             System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
             List<byte> bytes = new();
             bytes.AddRange(BitConverter.GetBytes(this.Length));
-            bytes.AddRange(unicodeEncoding.GetBytes(this.In));
-            bytes.AddRange(unicodeEncoding.GetBytes(this.Out));
+            byte[] inBytes = unicodeEncoding.GetBytes(this.In);
+            byte[] outBytes = new byte[inBytes.Length];
+            Array.Copy(unicodeEncoding.GetBytes(this.Out), outBytes, outBytes.Length);
+            bytes.AddRange(inBytes);
+            bytes.AddRange(outBytes);
             this.Bytes = bytes.ToArray();
         }
     }
     public class TextDataCategory(short key)
     {
         public static IReadOnlyList<TextDataCategory> All => _all;
-        public static List<TextDataCategory> _all = new();
+        private static List<TextDataCategory> _all = new();
         public readonly short Key = key;
-        public List<TextDataItem> List= new();
+        public List<TextDataItem> List = new();
         public int Size => List.Count;
-        public byte[] Bytes {
-            get {
+        public byte[] Bytes
+        {
+            get
+            {
                 List<byte> bytes = new();
                 bytes.AddRange(BitConverter.GetBytes(this.Size));
                 foreach (var item in List)
@@ -372,7 +377,7 @@ namespace BhModule.Lang5
         {
             foreach (var c in All)
             {
-                if(c.Key == item.CategoryKey)
+                if (c.Key == item.CategoryKey)
                 {
                     c.List.Add(item);
                     return;
