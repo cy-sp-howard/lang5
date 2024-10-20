@@ -2,11 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Iced.Intel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using static Iced.Intel.AssemblerRegisters;
 using System.Threading;
+using Iced.Intel;
+using static Iced.Intel.AssemblerRegisters;
 
 namespace BhModule.Lang5
 {
@@ -74,6 +74,8 @@ namespace BhModule.Lang5
             TextJsonItem[] data = JsonSerializer.Deserialize<TextJsonItem[]>(MapText.text);
             foreach (var item in data)
             {
+                TextDataCategory.AutoSort(new TextDataItem(item.In, item.Out));
+
                 byte[] inBytes = unicodeEncoding.GetBytes(item.In);
                 byte[] outBytes = unicodeEncoding.GetBytes(item.Out);
                 if (inBytes.Length != 2 || outBytes.Length != 2) continue;
@@ -326,7 +328,7 @@ namespace BhModule.Lang5
         public readonly int Length;
         public readonly short CategoryKey;
         public readonly byte[] Bytes;
-        TextDataItem(string In, string Out)
+        public TextDataItem(string In, string Out)
         {
             this.In = In;
             this.Out = Out;
@@ -354,8 +356,18 @@ namespace BhModule.Lang5
         public static List<TextDataCategory> _all = new();
         public readonly short Key = key;
         public List<TextDataItem> List= new();
-        public readonly int Size;
-        public readonly byte[] Bytes;
+        public int Size => List.Count;
+        public byte[] Bytes {
+            get {
+                List<byte> bytes = new();
+                bytes.AddRange(BitConverter.GetBytes(this.Size));
+                foreach (var item in List)
+                {
+                    bytes.AddRange(item.Bytes);
+                }
+                return bytes.ToArray();
+            }
+        }
         public static void AutoSort(TextDataItem item)
         {
             foreach (var c in All)
