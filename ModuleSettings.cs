@@ -18,7 +18,7 @@ namespace BhModule.Lang5
         }
         private void InitUISetting(SettingCollection settings)
         {
-            this.ChineseUI = settings.DefineSetting(nameof(this.ChineseUI), false, () => "Use Chinese UI", () => "");
+            this.ChineseUI = settings.DefineSetting(nameof(this.ChineseUI), true, () => "Use Chinese UI", () => "");
             this.ChineseUI.SettingChanged += (sender, args) => { module.memService.SetZhUI(ChineseUI.Value); };
             this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
             this.ChineseUIKey.Value.Enabled = true;
@@ -29,7 +29,7 @@ namespace BhModule.Lang5
             };
             MemService.OnLoaded += delegate { module.memService.SetZhUI(ChineseUI.Value); };
 
-            this.Cht = settings.DefineSetting(nameof(this.Cht), false, () => "Convert to Traditional Chinese", () => "");
+            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Convert to Traditional Chinese", () => "");
             this.Cht.SettingChanged += (sender, args) => { module.memService.SetCovert(Cht.Value); };
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
