@@ -1,20 +1,12 @@
 ﻿using Blish_HUD;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Reflection.Emit;
-using System.Threading.Tasks;
 using Iced.Intel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using static Iced.Intel.AssemblerRegisters;
-using System.ServiceModel.Channels;
-using System.Net;
-using System.Runtime.InteropServices;
-using Gw2Sharp.WebApi.V2.Models;
 using System.Threading;
-using Gw2Sharp.Models;
 
 namespace BhModule.Lang5
 {

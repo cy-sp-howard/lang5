@@ -3,14 +3,11 @@ using Blish_HUD.Controls;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
-using System.Diagnostics;
-using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using Iced.Intel;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using System.Diagnostics;
 
 namespace BhModule.Lang5
 {
