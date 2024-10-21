@@ -76,8 +76,8 @@ namespace BhModule.Lang5
         }
         private void Init()
         {
-            //ReadStorage();
             FindRefs();
+            //ReadStorage();
             GenCaller();
             GenLangSetter();
             GenTextData();
@@ -247,13 +247,12 @@ namespace BhModule.Lang5
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
 
             List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
-            if (opcodes.Count == 0) return;
-            CallerAddress = new((int)opcodes[0].IPRelativeMemoryAddress);
-            byte[] storageBytes = Utils.ReadMemory(StoragePtr, 32);
-            TextDataAddress = new IntPtr(BitConverter.ToInt64(storageBytes, 0));
-            TextConverterAddress = new IntPtr(BitConverter.ToInt64(storageBytes, 8));
-            LangSetterAddress = new IntPtr(BitConverter.ToInt64(storageBytes, 16));
-            OriginLangPtr = new IntPtr(BitConverter.ToInt64(storageBytes, 24));
+
+            if (opcodes.Count == 0 || !opcodes[0].IsCallNear)
+            {
+                Utils.Notify.Show("Error");
+            };
+
         }
         private IntPtr AllocNearMemory(int size)
         {
