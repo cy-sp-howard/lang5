@@ -42,7 +42,7 @@ namespace BhModule.Lang5
         }
         public void Upadate()
         {
-  
+
         }
         public void Unload()
         {
@@ -93,7 +93,7 @@ namespace BhModule.Lang5
             {
                 if (item.Value == IntPtr.Zero)
                 {
-                    Utils.Notify.Show($"Unexpected \"{item.Key}\" address.");
+                    Utils.Notify.Show($"Unexpected \"{item.Key}\" address.", 6000);
                     return 1;
                 }
             }
@@ -103,7 +103,7 @@ namespace BhModule.Lang5
             List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
             if (opcodes.Count != 0 && opcodes[0].IsJmpNear)
             {
-                Utils.Notify.Show("Please restart game,can't handle program which injected.");
+                Utils.Notify.Show("Please restart game, can not handle codes which injected.", 6000);
                 return 2;
             };
             return 0;
