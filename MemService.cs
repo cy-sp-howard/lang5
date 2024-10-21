@@ -7,24 +7,32 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using Iced.Intel;
 using static Iced.Intel.AssemblerRegisters;
+using System.Net.Mail;
+using Microsoft.Xna.Framework.Graphics.PackedVector;
 
 namespace BhModule.Lang5
 {
     public class MemService
     {
         private readonly Lang5Module module;
-        private IntPtr InjectionCallerAddress;
+        private IntPtr CallerAddress;
         private IntPtr TextDataAddress;
         private IntPtr TextConverterAddress;
         private IntPtr LangSetterAddress;
-        private IntPtr CallFuncPtr => IntPtr.Add(InjectionCallerAddress, 100);
+        private IntPtr CallFuncPtr => IntPtr.Add(CallerAddress, 100);
+        private IntPtr StoragePtr => IntPtr.Add(CallerAddress, 200);
         private IntPtr OriginLangPtr;
         private bool loaded = false;
+        public bool restoreWhenUnload = true;
         public static event EventHandler OnLoaded;
         private OverwriteOpcodes TextConverterDetour;
         public MemService(Lang5Module module)
         {
+            var a = new List<string>();
             this.module = module;
+        }
+        public void Load()
+        {
             if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
             GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
         }
@@ -36,14 +44,14 @@ namespace BhModule.Lang5
         }
         public void Unload()
         {
-            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning) return;
+            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || !restoreWhenUnload) return;
             SetZhUI(false);
             foreach (var item in OverwriteOpcodes.All)
             {
                 item.Undo();
             }
             Utils.FreeMemory(TextDataAddress);
-            Utils.FreeMemory(InjectionCallerAddress);
+            Utils.FreeMemory(CallerAddress);
             Utils.FreeMemory(LangSetterAddress);
             Utils.FreeMemory(TextConverterAddress);
         }
@@ -63,39 +71,20 @@ namespace BhModule.Lang5
         }
         private void Init()
         {
-            WriteTextData();
-            WriteFuncData();
-        }
-        private void WriteTextData()
-        {
-            System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
-            TextDataAddress = Utils.AllocMemory(40000);
-            List<byte> data_byte = new();
-            TextJsonItem[] data = JsonSerializer.Deserialize<TextJsonItem[]>(MapText.text);
-            foreach (var item in data)
-            {
-                TextDataCategory.AutoSort(new TextDataItem(item.In, item.Out));
-
-                byte[] inBytes = unicodeEncoding.GetBytes(item.In);
-                byte[] outBytes = unicodeEncoding.GetBytes(item.Out);
-                if (inBytes.Length != 2 || outBytes.Length != 2) continue;
-                data_byte.AddRange(inBytes);
-                data_byte.AddRange(outBytes);
-            }
-            Utils.WriteMemory(TextDataAddress, data_byte.ToArray());
-        }
-        private void WriteFuncData()
-        {
-            GenInjectionCaller();
+            //ReadStorage();
+            GenCaller();
             GenLangSetter();
+            GenTextData();
             GenTextCoverter();
+            WriteStorage();
         }
-        private void GenInjectionCaller()
+        private void GenCaller()
         {
             IntPtr callAddress = IntPtr.Add(Utils.FindReadonlyStringRef("ViewAdvanceText"), -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
-            InjectionCallerAddress = AllocNearMemory(200); // after +100 for buffer
-            OverwriteOpcodes callDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, InjectionCallerAddress));
+
+            CallerAddress = AllocNearMemory(300); // after 100+ func ptr and args, 200+ for storage
+            OverwriteOpcodes callDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, CallerAddress));
 
             IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
@@ -130,9 +119,9 @@ namespace BhModule.Lang5
             }
             c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
 
-            c.Assemble(codeWriter, (ulong)InjectionCallerAddress.ToInt64());
+            c.Assemble(codeWriter, (ulong)CallerAddress.ToInt64());
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), InjectionCallerAddress);
-            Utils.WriteMemory(InjectionCallerAddress, codeWriter.data.ToArray());
+            Utils.WriteMemory(CallerAddress, codeWriter.data.ToArray());
             callDetour.Write();
 
         }
@@ -159,10 +148,27 @@ namespace BhModule.Lang5
 
             Utils.WriteMemory(LangSetterAddress, codeWriter.data.ToArray());
         }
+        private void GenTextData()
+        {
+            System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
+            TextDataAddress = Utils.AllocMemory(40000);
+            List<byte> data_byte = new();
+            TextJsonItem[] data = JsonSerializer.Deserialize<TextJsonItem[]>(MapText.text);
+            foreach (var item in data)
+            {
+                //TextDataCategory.AutoSort(new TextDataItem(item.In, item.Out));
+
+                byte[] inBytes = unicodeEncoding.GetBytes(item.In);
+                byte[] outBytes = unicodeEncoding.GetBytes(item.Out);
+                if (inBytes.Length != 2 || outBytes.Length != 2) continue;
+                data_byte.AddRange(inBytes);
+                data_byte.AddRange(outBytes);
+            }
+            Utils.WriteMemory(TextDataAddress, data_byte.ToArray());
+        }
         private void GenTextCoverter()
         {
-            TextConverterAddress = AllocNearMemory(200); // 100+ for collect whole word
-            IntPtr wordAddress = IntPtr.Add(TextConverterAddress, 100);
+            TextConverterAddress = AllocNearMemory(200);
 
             IntPtr target = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
@@ -179,9 +185,6 @@ namespace BhModule.Lang5
             c.jb(originOpcodesLabel);
             c.push(rdi);
             c.push(rax);
-            c.push(r14);
-            c.mov(r14, wordAddress.ToInt64());
-            c.mov(__qword_ptr[r14 + rcx * 0x2], si);
             c.mov(rdi, TextDataAddress.ToInt64());
             c.xor(rax, rax);
             c.Label(ref loopStartlabel);
@@ -194,7 +197,6 @@ namespace BhModule.Lang5
             c.lea(rdi, __qword_ptr[rdi - 0x2]);
             c.mov(si, __qword_ptr[rdi]);
             c.Label(ref endLabel);
-            c.pop(r14);
             c.pop(rax);
             c.pop(rdi); ;
             c.Label(ref originOpcodesLabel);
@@ -215,6 +217,29 @@ namespace BhModule.Lang5
             list.Add(0xe9);
             list.AddRange(BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5))));
             return list.ToArray();
+        }
+        private void WriteStorage()
+        {
+            List<byte> bytes = new();
+            bytes.AddRange(BitConverter.GetBytes(TextDataAddress.ToInt64()));
+            bytes.AddRange(BitConverter.GetBytes(TextConverterAddress.ToInt64()));
+            bytes.AddRange(BitConverter.GetBytes(LangSetterAddress.ToInt64()));
+            bytes.AddRange(BitConverter.GetBytes(OriginLangPtr.ToInt64()));
+            Utils.WriteMemory(StoragePtr, bytes.ToArray());
+        }
+        private void ReadStorage()
+        {
+            IntPtr callAddress = IntPtr.Add(Utils.FindReadonlyStringRef("ViewAdvanceText"), -0x8);
+            byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
+
+            List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
+            if (opcodes.Count == 0) return;
+            CallerAddress = new((int)opcodes[0].IPRelativeMemoryAddress);
+            byte[] storageBytes = Utils.ReadMemory(StoragePtr, 32);
+            TextDataAddress = new IntPtr(BitConverter.ToInt64(storageBytes, 0));
+            TextConverterAddress = new IntPtr(BitConverter.ToInt64(storageBytes, 8));
+            LangSetterAddress = new IntPtr(BitConverter.ToInt64(storageBytes, 16));
+            OriginLangPtr = new IntPtr(BitConverter.ToInt64(storageBytes, 24));
         }
         private IntPtr AllocNearMemory(int size)
         {
@@ -290,7 +315,6 @@ namespace BhModule.Lang5
         public void Undo()
         {
             Utils.WriteMemory(Address, BackupBytes.ToArray());
-
         }
 
     }

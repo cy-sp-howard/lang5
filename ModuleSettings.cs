@@ -11,6 +11,7 @@ namespace BhModule.Lang5
         public SettingEntry<bool> ChineseUI { get; private set; }
         public SettingEntry<KeyBinding> ChtKey { get; private set; }
         public SettingEntry<bool> Cht { get; private set; }
+        public SettingEntry<bool> RestoreMem { get; private set; }
         public ModuleSettings(Lang5Module module, SettingCollection settings)
         {
             this.module = module;
@@ -28,17 +29,22 @@ namespace BhModule.Lang5
                 Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
             };
             MemService.OnLoaded += delegate { module.memService.SetZhUI(ChineseUI.Value); };
+            settings.DefineSetting(" ", false, () => "", () => "").SetDisabled();
 
-            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Convert to Traditional Chinese", () => "");
+            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified To Traditional ", () => "Work when Chinese UI enable.");
             this.Cht.SettingChanged += (sender, args) => { module.memService.SetCovert(Cht.Value); };
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
             this.ChtKey.Value.Activated += (sender, args) =>
             {
                 Cht.Value = !Cht.Value;
-                Utils.Notify.Show(Cht.Value ? "Enable covert to Traditional Chinese." : "Disable covert to Traditional Chinese.");
+                Utils.Notify.Show(Cht.Value ? "Enable Simplified Chinese To Traditional Chinese." : "Disable Simplified Chinese To Traditional Chinese.");
             };
             MemService.OnLoaded += delegate { module.memService.SetCovert(Cht.Value); };
+            settings.DefineSetting("  ", false, () => "", () => "").SetDisabled();
+
+            this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore changed memory when module unload.", () => "When close Blish, will return back original language setting");
+            this.RestoreMem.SettingChanged += (sender, args) => { module.memService.restoreWhenUnload = this.RestoreMem.Value; };
         }
     }
 }

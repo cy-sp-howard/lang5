@@ -35,27 +35,21 @@ namespace BhModule.Lang5
             this.Settings = new ModuleSettings(this, settings);
         }
 
-        // game attached run; use --module "**.bhm"   will call when Blish BeginRun()
-
         protected override void Initialize()
         {
-
-
+            this.memService = new MemService(this);
         }
 
-        //game attached run; use --module "**.bhm"   will call when Blish BeginRun()
         protected override async Task LoadAsync()
         {
-            this.memService = new MemService(this);
+            this.memService.Load();
         }
 
         protected override void Update(GameTime gameTime)
         {
             this.memService.Upadate();
-            var a = GameService.GameIntegration.Gw2Instance.Gw2Process;
         }
 
-        /// <inheritdoc />
         protected override void Unload()
         {
             this.memService.Unload();
