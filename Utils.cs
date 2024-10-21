@@ -233,6 +233,12 @@ namespace BhModule.Lang5
         private const float duration = 3000;
         private string message;
         private DateTime msgStartTime = DateTime.Now;
+        public override void DoUpdate(GameTime gameTime)
+        {
+            Parent = GameService.Graphics.SpriteScreen;
+            Size = new Point(Parent.Size.X, 50);
+            Location = new Point(0, Parent.Size.Y / 10 * 2);
+        }
         protected override void Paint(SpriteBatch spriteBatch, Rectangle bounds)
         {
             if (message == null) return;
@@ -254,9 +260,6 @@ namespace BhModule.Lang5
         }
         public void Show(string text)
         {
-            Parent = GameService.Graphics.SpriteScreen;
-            Size = new Point(Parent.Size.X, 50);
-            Location = new Point(0, Parent.Size.Y / 10 * 2);
             msgStartTime = DateTime.Now;
             message = text;
         }

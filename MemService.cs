@@ -20,7 +20,6 @@ namespace BhModule.Lang5
         private IntPtr TextConverterAddress;
         private IntPtr LangSetterAddress;
         private IntPtr CallFuncPtr => IntPtr.Add(CallerAddress, 100);
-        private IntPtr StoragePtr => IntPtr.Add(CallerAddress, 200);
         private IntPtr OriginLangPtr;
         private Dictionary<string, IntPtr> refs = new() {
             { "ViewAdvanceText" ,IntPtr.Zero},
@@ -43,9 +42,7 @@ namespace BhModule.Lang5
         }
         public void Upadate()
         {
-            if (loaded) return;
-            loaded = true;
-            OnLoaded?.Invoke(this, EventArgs.Empty);
+  
         }
         public void Unload()
         {
@@ -77,23 +74,46 @@ namespace BhModule.Lang5
         private void Init()
         {
             FindRefs();
-            //ReadStorage();
+            if (ValidateAddress() > 0) return;
             GenCaller();
             GenLangSetter();
             GenTextData();
             GenTextCoverter();
-            WriteStorage();
+
+            loaded = true;
+            OnLoaded?.Invoke(this, EventArgs.Empty);
         }
         private void FindRefs()
         {
             refs = Utils.FindReadonlyStringRefs(refs.Keys.ToArray());
+        }
+        private int ValidateAddress()
+        {
+            foreach (var item in refs)
+            {
+                if (item.Value == IntPtr.Zero)
+                {
+                    Utils.Notify.Show($"Unexpected \"{item.Key}\" address.");
+                    return 1;
+                }
+            }
+
+            IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
+            byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
+            List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
+            if (opcodes.Count != 0 && opcodes[0].IsJmpNear)
+            {
+                Utils.Notify.Show("Please restart game,can't handle program which injected.");
+                return 2;
+            };
+            return 0;
         }
         private void GenCaller()
         {
             IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
 
-            CallerAddress = AllocNearMemory(300); // after 100+ func ptr and args, 200+ for storage
+            CallerAddress = AllocNearMemory(200); // after 100+ func ptr and args
             OverwriteOpcodes callDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, CallerAddress));
 
             IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
@@ -227,32 +247,6 @@ namespace BhModule.Lang5
             list.Add(0xe9);
             list.AddRange(BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5))));
             return list.ToArray();
-        }
-        private void WriteStorage()
-        {
-            List<byte> bytes = new();
-            bytes.AddRange(BitConverter.GetBytes(TextDataAddress.ToInt64()));
-            bytes.AddRange(BitConverter.GetBytes(TextConverterAddress.ToInt64()));
-            bytes.AddRange(BitConverter.GetBytes(LangSetterAddress.ToInt64()));
-            bytes.AddRange(BitConverter.GetBytes(OriginLangPtr.ToInt64()));
-            foreach (var item in refs)
-            {
-                bytes.AddRange(BitConverter.GetBytes(item.Value.ToInt64()));
-            }
-            Utils.WriteMemory(StoragePtr, bytes.ToArray());
-        }
-        private void ReadStorage()
-        {
-            IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
-            byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
-
-            List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
-
-            if (opcodes.Count == 0 || !opcodes[0].IsCallNear)
-            {
-                Utils.Notify.Show("Error");
-            };
-
         }
         private IntPtr AllocNearMemory(int size)
         {
