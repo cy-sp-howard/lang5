@@ -8,15 +8,22 @@ using System.Text;
 using Iced.Intel;
 using System.Collections.Generic;
 using System.Diagnostics;
+using SharpDX.Direct3D11;
 
 namespace BhModule.Lang5
 {
     public static class Utils
     {
         public static NotifyClass Notify = new NotifyClass();
-        public static IntPtr FindReadonlyStringRef(String str)
+        public static Dictionary<string, IntPtr> FindReadonlyStringRefs(string[] strings)
         {
-            return Find.FindReadonlyStringRef(str, GameService.GameIntegration.Gw2Instance.Gw2Process);
+            IntPtr[] addresses = Find.FindReadonlyStringRefs(strings);
+            Dictionary<string, IntPtr> result = new();
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                result[strings[i]] = addresses[i];
+            }
+            return result;
         }
         public static IntPtr AllocMemory(int size)
         {
@@ -107,156 +114,110 @@ namespace BhModule.Lang5
     }
     public class Find
     {
-        public static IntPtr FindReadonlyStringRef(String str, Process process, ProcessModule module = null)
+        public static IntPtr[] FindReadonlyStringRefs(string[] strings)
         {
             Encoding utf8Encoding = Encoding.UTF8;
-            String pattern = BitConverter.ToString(utf8Encoding.GetBytes(str)).Replace("-", "");
-            IntPtr stringAddress = FindPattern(pattern, process, module);
-            return FinRef(stringAddress, process, module);
-        }
-        public static IntPtr FinRef(IntPtr addr, Process process, ProcessModule module = null)
-        {
-            long addr_long = addr.ToInt64();
-            if (module == null) module = process.MainModule;
-            int totalMemoryBytesSize = module.ModuleMemorySize;
-            IntPtr startAddr = module.BaseAddress;
-            IntPtr endAddr = IntPtr.Add(module.BaseAddress, totalMemoryBytesSize);
-
-
-            int pageSize = 6400000;
-            int remainSize = module.ModuleMemorySize / pageSize;
-            int maxPage = module.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
-            int currentPage = 1;
-            byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
-            do
+            List<byte[]> stringPatterns = new();
+            foreach (string str in strings)
             {
-                IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
-                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out IntPtr bufferReadSize);
-                long pageStartAddr_long = pageStartAddr.ToInt64();
-                for (int i = 0; i < buffer.Length - 3; i++)
-                {
-                    long rip_long = pageStartAddr_long + i + 4;
-                    int currentValue = BitConverter.ToInt32(buffer, i);
-                    long followAddr_long = rip_long + currentValue;
-                    if (addr_long == followAddr_long)
-                    {
-                        return IntPtr.Add(pageStartAddr, i);
-                    };
-                }
-                currentPage += 1;
-            } while (currentPage <= maxPage);
-            return IntPtr.Zero;
-
-        }
-        public static IntPtr FindPattern(string pattern, Process process, ProcessModule module = null)
-        {
-            if (module == null) module = process.MainModule;
-            string[] patternAry = PatternToAry(pattern);
-
-
-            int totalMemoryBytesSize = module.ModuleMemorySize;
-            IntPtr startAddr = module.BaseAddress;
-            IntPtr endAddr = IntPtr.Add(module.BaseAddress, totalMemoryBytesSize - patternAry.Length);
-
-
-            int pageSize = 6400000;
-            int remainSize = module.ModuleMemorySize / pageSize;
-            int maxPage = module.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
-            int currentPage = 1;
-
-
-            byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
-            do
-            {
-                IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
-                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out IntPtr bufferReadSize);
-                int index = -1;
-                if (pattern.IndexOf("?") == -1)
-                {
-                    int foundIndex = BitConverter.ToString(buffer).Replace("-", "").IndexOf(pattern);
-                    if (foundIndex > -1)
-                    {
-                        index = foundIndex / 2;
-                    }
-                }
-                else
-                {
-                    index = IndexOfPattern(ref patternAry, ref buffer);
-                }
-                if (index > -1) return IntPtr.Add(pageStartAddr, index);
-                currentPage += 1;
-            } while (currentPage <= maxPage);
-            return IntPtr.Zero;
-        }
-        static string[] PatternToAry(string pattern)
-        {
-            pattern = pattern.Replace(" ", "").ToUpper();
-            bool isEven = pattern.Length % 2 == 0;
-            if (!isEven) pattern = "0" + pattern;
-            string[] result = new string[pattern.Length / 2];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = pattern.Substring(i * 2, 2);
+                stringPatterns.Add(utf8Encoding.GetBytes(str));
             }
+
+            List<byte[]> addressPatterns = new();
+            foreach (var address in FindBytes(stringPatterns))
+            {
+                addressPatterns.Add(BitConverter.GetBytes(address.ToInt64()));
+            }
+            return FindBytes(addressPatterns, RelFindIndex);
+        }
+        public static IntPtr[] FindBytes(List<byte[]> patterns, Func<IntPtr, byte[], byte[], int> findIndexFunc = null)
+        {
+            Process process = GameService.GameIntegration.Gw2Instance.Gw2Process;
+            ProcessModule module = process.MainModule;
+            int totalMemoryBytesSize = module.ModuleMemorySize;
+            IntPtr startAddr = module.BaseAddress;
+
+            int pageSize = 6400000;
+            int remainSize = module.ModuleMemorySize / pageSize;
+            int maxPage = module.ModuleMemorySize / pageSize + (remainSize == 0 ? 0 : 1);
+            int currentPage = 1;
+
+            IntPtr[] result = new IntPtr[patterns.Count];
+            int foundCount = 0;
+            byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
+            do
+            {
+                IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
+                UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out IntPtr bufferReadSize);
+
+
+                for (int i = 0; i < result.Length; i++)
+                {
+                    if (result[i] == IntPtr.Zero)
+                    {
+                        Func<IntPtr, byte[], byte[], int> findIndex = findIndexFunc ?? DefaultFindIndex;
+                        int foundIndex = findIndex(pageStartAddr, buffer, patterns[i]);
+                        if (foundIndex > -1)
+                        {
+                            foundCount++;
+                            result[i] = IntPtr.Add(pageStartAddr, foundIndex);
+                        }
+                    };
+
+                }
+                if (foundCount == result.Length) break;
+                currentPage += 1;
+            } while (currentPage <= maxPage);
             return result;
         }
-        static int IndexOfPattern(ref string[] pattern, ref byte[] source)
+        static int RelFindIndex(IntPtr sourceAddress, byte[] source, byte[] target)
         {
-            if (source.Length < pattern.Length) { return -1; }
-            for (int i = 0; i <= source.Length - pattern.Length; i++)
+            long address = sourceAddress.ToInt64();
+            long targetAddress = BitConverter.ToInt64(target, 0);
+
+            //for (int i = 0; i < buffer.Length - 3; i++)
+            //{
+            //    long rip_long = pageStartAddr_long + i + 4;
+            //    int currentValue = BitConverter.ToInt32(buffer, i);
+            //    long followAddr_long = rip_long + currentValue;
+            //    if (addr_long == followAddr_long)
+            //    {
+            //        return IntPtr.Add(pageStartAddr, i);
+            //    };
+            //}
+            for (int i = 0; i < source.Length - 3; i++)
             {
-                if (IsEqual(pattern, SubAry(ref source, i, pattern.Length))) return i;
+                long rip = address + i + 4;
+                int currentValue = BitConverter.ToInt32(source, i);
+                long followAddress = rip + currentValue;
+                if (targetAddress == followAddress)
+                {
+                    return i;
+                };
             }
             return -1;
         }
-        static T[] SubAry<T>(ref T[] ary, int startIndex, int size)
+        static int DefaultFindIndex(IntPtr sourceAddress, byte[] source, byte[] target)
         {
-            T[] result = new T[size];
-            for (int i = 0; i < size; i++)
-            {
-                result[i] = ary[i + startIndex];
-            }
-            return result;
-        }
-        static bool IsEqual(byte[] pattern, byte[] memory)
-        {
-            for (int i = 0; i < pattern.Length; i++)
-            {
 
-                if (pattern[i] != memory[i])
+            for (int i = 0; i <= source.Length - target.Length; i++)
+            {
+                bool found = true;
+                for (int j = 0; j < target.Length; j++)
                 {
-                    return false;
-                }
-            }
-            return true;
-        }
-        static bool IsEqual(string[] pattern, byte[] memory)
-        {
-            string patternString = String.Join("", pattern);
-            if (patternString.IndexOf("?") == -1)
-            {
-                return patternString == BitConverter.ToString(memory).Replace("-", "");
-            }
-
-            for (int i = 0; i < pattern.Length; i++)
-            {
-                string patternItem = pattern[i];
-
-                int maskIndex = patternItem.IndexOf("?");
-                if (maskIndex > -1)
-                {
-                    if (patternItem != "??" && memory[i].ToString()[maskIndex] != patternItem[maskIndex])
+                    if (source[i + j] != target[j])
                     {
-                        return false;
+                        found = false;
+                        break;
                     }
-
                 }
-                else if (memory[i] != Convert.ToByte(patternItem, 16))
+                if (found)
                 {
-                    return false;
+                    return i;
                 }
             }
-            return true;
+            return -1;
+
         }
     }
     public class ListCodeWriter : CodeWriter

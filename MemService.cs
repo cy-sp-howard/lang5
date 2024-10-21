@@ -22,13 +22,18 @@ namespace BhModule.Lang5
         private IntPtr CallFuncPtr => IntPtr.Add(CallerAddress, 100);
         private IntPtr StoragePtr => IntPtr.Add(CallerAddress, 200);
         private IntPtr OriginLangPtr;
+        private Dictionary<string, IntPtr> refs = new() {
+            { "ViewAdvanceText" ,IntPtr.Zero},
+            { "ValidateLanguage(language)",IntPtr.Zero},
+            { "ch >= STRING_CHAR_FIRST",IntPtr.Zero}
+        };
+        private OverwriteOpcodes TextConverterDetour;
         private bool loaded = false;
         public bool restoreWhenUnload = true;
         public static event EventHandler OnLoaded;
-        private OverwriteOpcodes TextConverterDetour;
+
         public MemService(Lang5Module module)
         {
-            var a = new List<string>();
             this.module = module;
         }
         public void Load()
@@ -72,15 +77,20 @@ namespace BhModule.Lang5
         private void Init()
         {
             //ReadStorage();
+            FindRefs();
             GenCaller();
             GenLangSetter();
             GenTextData();
             GenTextCoverter();
             WriteStorage();
         }
+        private void FindRefs()
+        {
+            refs = Utils.FindReadonlyStringRefs(refs.Keys.ToArray());
+        }
         private void GenCaller()
         {
-            IntPtr callAddress = IntPtr.Add(Utils.FindReadonlyStringRef("ViewAdvanceText"), -0x8);
+            IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
 
             CallerAddress = AllocNearMemory(300); // after 100+ func ptr and args, 200+ for storage
@@ -127,7 +137,7 @@ namespace BhModule.Lang5
         }
         private void GenLangSetter()
         {
-            IntPtr parentBlock = Utils.FindReadonlyStringRef("ValidateLanguage(language)");
+            IntPtr parentBlock = refs["ValidateLanguage(language)"];
             OriginLangPtr = Utils.FollowAddress(IntPtr.Add(parentBlock, 0xb));
             IntPtr targetFuncAddress = Utils.FollowAddress(IntPtr.Add(parentBlock, 0x24));
             LangSetterAddress = AllocNearMemory(100);
@@ -170,7 +180,7 @@ namespace BhModule.Lang5
         {
             TextConverterAddress = AllocNearMemory(200);
 
-            IntPtr target = IntPtr.Add(Utils.FindReadonlyStringRef("ch >= STRING_CHAR_FIRST"), 0x26);
+            IntPtr target = IntPtr.Add(refs["ch >= STRING_CHAR_FIRST"], 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
             TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress));
             IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
@@ -225,11 +235,15 @@ namespace BhModule.Lang5
             bytes.AddRange(BitConverter.GetBytes(TextConverterAddress.ToInt64()));
             bytes.AddRange(BitConverter.GetBytes(LangSetterAddress.ToInt64()));
             bytes.AddRange(BitConverter.GetBytes(OriginLangPtr.ToInt64()));
+            foreach (var item in refs)
+            {
+                bytes.AddRange(BitConverter.GetBytes(item.Value.ToInt64()));
+            }
             Utils.WriteMemory(StoragePtr, bytes.ToArray());
         }
         private void ReadStorage()
         {
-            IntPtr callAddress = IntPtr.Add(Utils.FindReadonlyStringRef("ViewAdvanceText"), -0x8);
+            IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
 
             List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
