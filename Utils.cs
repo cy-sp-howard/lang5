@@ -175,16 +175,6 @@ namespace BhModule.Lang5
             long address = sourceAddress.ToInt64();
             long targetAddress = BitConverter.ToInt64(target, 0);
 
-            //for (int i = 0; i < buffer.Length - 3; i++)
-            //{
-            //    long rip_long = pageStartAddr_long + i + 4;
-            //    int currentValue = BitConverter.ToInt32(buffer, i);
-            //    long followAddr_long = rip_long + currentValue;
-            //    if (addr_long == followAddr_long)
-            //    {
-            //        return IntPtr.Add(pageStartAddr, i);
-            //    };
-            //}
             for (int i = 0; i < source.Length - 3; i++)
             {
                 long rip = address + i + 4;
