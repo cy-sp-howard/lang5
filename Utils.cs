@@ -99,7 +99,7 @@ namespace BhModule.Lang5
         }
 
     }
-    public class UtilsExtern
+    public static class UtilsExtern
     {
         [DllImport("kernel32.dll")]
         public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, [Out] byte[] lpBuffer, int nSize, out IntPtr lpNumberOfBytesRead);
