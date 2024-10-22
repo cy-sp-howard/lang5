@@ -113,7 +113,7 @@ namespace BhModule.Lang5
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool VirtualFreeEx(IntPtr hProcess, IntPtr lpAddress, int dwSize, int dwFreeType);
     }
-    public class Find
+    public static class Find
     {
         public static IntPtr[] FindReadonlyStringRefs(string[] strings)
         {
