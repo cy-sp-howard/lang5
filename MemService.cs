@@ -116,8 +116,8 @@ namespace BhModule.Lang5
 
             IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
-            var c = new Assembler(64);
-            var endLabel = c.CreateLabel();
+            Assembler c = new Assembler(64);
+            Label endLabel = c.CreateLabel();
             c.push(rax);
             c.push(rbx);
             c.push(rcx);
@@ -161,7 +161,7 @@ namespace BhModule.Lang5
             LangSetterAddress = AllocNearMemory(100);
 
             ListCodeWriter codeWriter = new();
-            var c = new Assembler(64);
+            Assembler c = new Assembler(64);
             c.push(rbx);
             c.push(rsp);
             c.push(rcx);
@@ -192,10 +192,29 @@ namespace BhModule.Lang5
             IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
 
             ListCodeWriter codeWriter = new();
-            var c = new Assembler(64);
-            var loopStartlabel = c.CreateLabel();
-            var endLabel = c.CreateLabel();
-            var originOpcodesLabel = c.CreateLabel();
+            Assembler c = new Assembler(64);
+
+            // isEqual(b1,b2,size)
+            Label isEqualLoopStart = c.CreateLabel();
+            Label isEqualLoopEnd = c.CreateLabel();
+            c.mov(r10, 0x1);
+            c.Label(ref isEqualLoopStart);
+            c.mov(rax, __qword_ptr[rcx]);
+            c.mov(rbx, __qword_ptr[rdx]);
+            c.cmp(rax, rbx);
+            c.jne(isEqualLoopEnd);
+            c.lea(rcx, __qword_ptr[rcx - 0x2]);
+            c.lea(rdx, __qword_ptr[rdx - 0x2]);
+            c.test(r8, r8);
+            c.je(isEqualLoopEnd);
+            c.mov(r8, r8 - 0x1);
+            c.Label(ref isEqualLoopEnd);
+
+
+
+            Label loopStartlabel = c.CreateLabel();
+            Label endLabel = c.CreateLabel();
+            Label originOpcodesLabel = c.CreateLabel();
 
             c.cmp(si, 0x4e00);
             c.jb(originOpcodesLabel);
@@ -374,7 +393,7 @@ namespace BhModule.Lang5
                 MapAddress = address;
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
                 List<byte> bytes = new();
-                foreach (var item in source.OrderByDescending(i=>i.In.Length))
+                foreach (var item in source.OrderByDescending(i => i.In.Length))
                 {
                     TextDataItem dataItem = new(item.In, item.Out);
                     TextDataCategory.AutoSort(dataItem);
