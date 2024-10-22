@@ -184,7 +184,7 @@ namespace BhModule.Lang5
         }
         private void GenTextCoverter()
         {
-            TextConverterAddress = AllocNearMemory(200);
+            TextConverterAddress = AllocNearMemory(1000);
 
             IntPtr target = IntPtr.Add(refs["ch >= STRING_CHAR_FIRST"], 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
@@ -193,22 +193,83 @@ namespace BhModule.Lang5
 
             ListCodeWriter codeWriter = new();
             Assembler c = new Assembler(64);
+            c.int3();
+            c.int3();
+            c.int3();
 
-            // isEqual(b1,b2,size)
-            Label isEqualLoopStart = c.CreateLabel();
-            Label isEqualLoopEnd = c.CreateLabel();
-            c.mov(r10, 0x1);
-            c.Label(ref isEqualLoopStart);
-            c.mov(rax, __qword_ptr[rcx]);
-            c.mov(rbx, __qword_ptr[rdx]);
-            c.cmp(rax, rbx);
-            c.jne(isEqualLoopEnd);
-            c.lea(rcx, __qword_ptr[rcx - 0x2]);
-            c.lea(rdx, __qword_ptr[rdx - 0x2]);
-            c.test(r8, r8);
-            c.je(isEqualLoopEnd);
-            c.mov(r8, r8 - 0x1);
-            c.Label(ref isEqualLoopEnd);
+            // replaceMatch(targetLastText,matchLastText,replacefirstText,size)
+            Label replaceMatch = c.CreateLabel();
+            Label replaceMatchLoopStart = c.CreateLabel();
+            Label replaceMatchFalse = c.CreateLabel();
+            Label replaceMatchTrue = c.CreateLabel();
+            Label replaceCopied = c.CreateLabel();
+            Label replaceMatchEnd = c.CreateLabel();
+            c.Label(ref replaceMatch);
+            c.push(rbx);
+            c.push(r9);
+            c.mov(r9, r8); // backup size
+            c.Label(ref replaceMatchLoopStart);
+            c.mov(ax, __qword_ptr[rcx]); // get text
+            c.mov(bx, __qword_ptr[rdx]); // get text
+            c.cmp(ax, bx);
+            c.jne(replaceMatchFalse); // not match
+            c.lea(rcx, __qword_ptr[rcx - 0x2]); // previous text
+            c.lea(rdx, __qword_ptr[rdx - 0x2]); // previous text
+            c.test(r8, r8); // check index 0
+            c.je(replaceMatchTrue); // match
+            c.dec(r8); // previous index
+            c.jmp(replaceMatchLoopStart);
+            c.Label(ref replaceMatchTrue);
+            c.mov(bx, __qword_ptr[rdx]);
+            c.mov(__qword_ptr[rcx], bx); // copy
+            c.lea(rcx, __qword_ptr[rcx + 0x2]); // next text
+            c.lea(rdx, __qword_ptr[rdx + 0x2]); // next text
+            c.cmp(r8, r9); //check last index
+            c.je(replaceCopied);
+            c.inc(r8); // next index
+            c.jmp(replaceMatchTrue);
+            c.Label(ref replaceCopied);
+            c.mov(rax, 0x1); // true
+            c.jmp(replaceMatchEnd);
+            c.Label(ref replaceMatchFalse);
+            c.mov(rax, 0x0); // false
+            c.Label(ref replaceMatchEnd);
+            c.pop(r9);
+            c.pop(rbx);
+            c.ret();
+
+            //replaceTextFromCategory(lastText,currentLen,category)
+            Label replaceTextFromCategory = c.CreateLabel();
+            Label replaceTextFromCategoryLoopStart = c.CreateLabel();
+            c.push(r10);
+            c.push(r11);
+            c.push(r12);
+            c.push(rdi);
+            c.push(rsi);
+            c.Label(ref replaceTextFromCategory);
+            c.mov(r10, rcx); //backup last text
+            c.mov(r11, rdx); //backup last text
+            c.mov(r12, r8); //backup category text
+            c.xor(rdi, rdi);
+            c.mov(edi, __qword_ptr[r8]); // category list len
+            c.Label(ref replaceTextFromCategoryLoopStart);
+            c.mov(r8, __qword_ptr[r8 + 0x4]); // item[n] len
+            c.lea(rdx, __qword_ptr[r8 + 0x8]); // item[n] stringIn
+            c.dec(rdx);
+            c.mov(rdx, rdx + r8); // item[n] stringIn last address
+            c.mov(rsi, rdx + 0x1); //item[n] stringOut address
+            c.call(replaceMatch);
+            c.test(rax, rax);
+            c.je(replaceTextFromCategoryLoopStart);
+            c.pop(rsi);
+            c.pop(rdi);
+            c.pop(r12);
+            c.pop(r11);
+            c.pop(r10);
+            c.ret();
+
+
+
 
 
 
