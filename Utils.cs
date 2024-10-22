@@ -9,6 +9,7 @@ using Iced.Intel;
 using System.Collections.Generic;
 using System.Diagnostics;
 using SharpDX.Direct3D11;
+using System.Linq;
 
 namespace BhModule.Lang5
 {
@@ -209,6 +210,48 @@ namespace BhModule.Lang5
             return -1;
 
         }
+    }
+    public class OverwriteOpcodes
+    {
+        public static List<OverwriteOpcodes> All = new();
+        public readonly IReadOnlyList<byte> BackupBytes;
+        public readonly IReadOnlyList<byte> OverwriteBytes;
+        public readonly IReadOnlyList<Instruction> BackupInstructions;
+        public readonly IntPtr Address;
+        public OverwriteOpcodes(IntPtr address, byte[] originBytes, byte[] overwriteBytes)
+        {
+            List<byte> backupOpcodes = new();
+            List<byte> overwriteOpcodes = overwriteBytes.ToList();
+
+            int atLeastbackupSize = overwriteBytes.Length;
+            List<Instruction> originBytesInstructions = Utils.ParseOpcodes(originBytes.ToArray(), address);
+            List<Instruction> backupInstructions = new();
+
+            for (int row = 0; backupOpcodes.Count < atLeastbackupSize; row++)
+            {
+                backupInstructions.Add(originBytesInstructions[row]);
+                for (int i = backupOpcodes.Count, i_start = backupOpcodes.Count; i < i_start + originBytesInstructions[row].Length; i++)
+                {
+                    backupOpcodes.Add(originBytes[i]);
+                    if (i > atLeastbackupSize - 1) overwriteOpcodes.Add(0x90);
+                }
+            }
+
+            this.Address = address;
+            this.BackupBytes = backupOpcodes;
+            this.OverwriteBytes = overwriteOpcodes;
+            this.BackupInstructions = backupInstructions;
+            All.Add(this);
+        }
+        public void Write()
+        {
+            Utils.WriteMemory(Address, OverwriteBytes.ToArray());
+        }
+        public void Undo()
+        {
+            Utils.WriteMemory(Address, BackupBytes.ToArray());
+        }
+
     }
     public class ListCodeWriter : CodeWriter
     {
