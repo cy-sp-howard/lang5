@@ -20,14 +20,14 @@ namespace BhModule.Lang5
         internal DirectoriesManager DirectoriesManager => this.ModuleParameters.DirectoriesManager;
         internal Gw2ApiManager Gw2ApiManager => this.ModuleParameters.Gw2ApiManager;
         #endregion
-        public MemService memService { get; private set; }
+        public MemService MemService { get; private set; }
         public ModuleSettings Settings { get; private set; }
-        public ModuleParameters Parameters { get; private set; }
+        public static Lang5Module Instance;
 
         [ImportingConstructor]
         public Lang5Module([Import("ModuleParameters")] ModuleParameters moduleParameters) : base(moduleParameters)
         {
-            Parameters = moduleParameters;
+            Lang5Module.Instance = this;
         }
 
         protected override void DefineSettings(SettingCollection settings)
@@ -37,22 +37,22 @@ namespace BhModule.Lang5
 
         protected override void Initialize()
         {
-            this.memService = new MemService(this);
+            this.MemService = new MemService(this);
         }
 
         protected override async Task LoadAsync()
         {
-            this.memService.Load();
+            this.MemService.Load();
         }
 
         protected override void Update(GameTime gameTime)
         {
-            this.memService.Upadate();
+            this.MemService.Upadate();
         }
 
         protected override void Unload()
         {
-            this.memService.Unload();
+            this.MemService.Unload();
         }
 
     }

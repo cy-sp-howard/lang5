@@ -8,8 +8,9 @@ using System.Text;
 using Iced.Intel;
 using System.Collections.Generic;
 using System.Diagnostics;
-using SharpDX.Direct3D11;
 using System.Linq;
+using System.IO;
+using System.Text.Json;
 
 namespace BhModule.Lang5
 {
@@ -97,7 +98,16 @@ namespace BhModule.Lang5
                 Trace.WriteLine(output.ToStringAndReset());
             }
         }
-
+        static public T GetJson<T>(string filePath)
+        {
+            byte[] buffer;
+            using (MemoryStream fileStream = Lang5Module.Instance.ContentsManager.GetFileStream(filePath) as MemoryStream)
+            {
+                buffer = fileStream.ToArray();
+            }
+            T data = JsonSerializer.Deserialize<T>(buffer);
+            return data;
+        }
     }
     public static class UtilsExtern
     {

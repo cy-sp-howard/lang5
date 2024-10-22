@@ -20,7 +20,7 @@ namespace BhModule.Lang5
         private void InitUISetting(SettingCollection settings)
         {
             this.ChineseUI = settings.DefineSetting(nameof(this.ChineseUI), true, () => "Use Chinese UI", () => "");
-            this.ChineseUI.SettingChanged += (sender, args) => { module.memService.SetZhUI(ChineseUI.Value); };
+            this.ChineseUI.SettingChanged += (sender, args) => { module.MemService.SetZhUI(ChineseUI.Value); };
             this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
             this.ChineseUIKey.Value.Enabled = true;
             this.ChineseUIKey.Value.Activated += (sender, args) =>
@@ -28,11 +28,11 @@ namespace BhModule.Lang5
                 ChineseUI.Value = !ChineseUI.Value;
                 Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
             };
-            MemService.OnLoaded += delegate { module.memService.SetZhUI(ChineseUI.Value); };
+            MemService.OnLoaded += delegate { module.MemService.SetZhUI(ChineseUI.Value); };
             settings.DefineSetting(" ", false, () => "", () => "").SetDisabled();
 
             this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional ", () => "Work when Chinese UI enable.");
-            this.Cht.SettingChanged += (sender, args) => { module.memService.SetCovert(Cht.Value); };
+            this.Cht.SettingChanged += (sender, args) => { module.MemService.SetCovert(Cht.Value); };
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
             this.ChtKey.Value.Activated += (sender, args) =>
@@ -40,7 +40,7 @@ namespace BhModule.Lang5
                 Cht.Value = !Cht.Value;
                 Utils.Notify.Show(Cht.Value ? "Enable Simplified Chinese To Traditional Chinese." : "Disable Simplified Chinese To Traditional Chinese.");
             };
-            MemService.OnLoaded += delegate { module.memService.SetCovert(Cht.Value); };
+            MemService.OnLoaded += delegate { module.MemService.SetCovert(Cht.Value); };
             settings.DefineSetting("  ", false, () => "", () => "").SetDisabled();
 
             this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore changed memory when module unload.", () => "When close Blish, will return back original language setting");

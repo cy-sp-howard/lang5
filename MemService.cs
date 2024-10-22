@@ -7,8 +7,6 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using Iced.Intel;
 using static Iced.Intel.AssemblerRegisters;
-using System.Net.Mail;
-using Microsoft.Xna.Framework.Graphics.PackedVector;
 
 namespace BhModule.Lang5
 {
@@ -32,6 +30,7 @@ namespace BhModule.Lang5
 
         public MemService(Lang5Module module)
         {
+            var a = TextJson.GetTextBytes(TextDataAddress);
             this.module = module;
         }
         public void Load()
@@ -179,19 +178,9 @@ namespace BhModule.Lang5
         }
         private void GenTextData()
         {
-            System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
             TextDataAddress = Utils.AllocMemory(40000);
-            List<byte> data_byte = new();
-            TextJsonItem[] data = JsonSerializer.Deserialize<TextJsonItem[]>(MapText.text);
-            foreach (var item in data)
-            {
-                byte[] inBytes = unicodeEncoding.GetBytes(item.In);
-                byte[] outBytes = unicodeEncoding.GetBytes(item.Out);
-                if (inBytes.Length != 2 || outBytes.Length != 2) continue;
-                data_byte.AddRange(inBytes);
-                data_byte.AddRange(outBytes);
-            }
-            Utils.WriteMemory(TextDataAddress, data_byte.ToArray());
+            byte[] data = TextJson.GetTextBytes(TextDataAddress);
+            Utils.WriteMemory(TextDataAddress, data);
         }
         private void GenTextCoverter()
         {
@@ -280,78 +269,128 @@ namespace BhModule.Lang5
             }
         }
     }
-    public class TextJsonItem
+    public static class TextJson
     {
-        [JsonPropertyName("o")]
-        public string Out { get; set; }
-        [JsonPropertyName("i")]
-        public string In { get; set; }
-    }
-    public class TextDataItem
-    {
-        public readonly string In;
-        public readonly string Out;
-        public readonly int Length;
-        public readonly short CategoryKey;
-        public readonly byte[] Bytes;
-        public TextDataItem(string In, string Out)
+        public static byte[] GetTextBytes(IntPtr address)
         {
-            this.In = In;
-            this.Out = Out;
-            this.Length = In.Length;
-            this.CategoryKey = BitConverter.ToInt16(BitConverter.GetBytes(In[Length - 1]), 0);
 
-            /*
-                struct {
-                    int textLength;
-                    char[textLength] in;
-                    char[textLength] out;
-                };
-             */
-            System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
-            List<byte> bytes = new();
-            bytes.AddRange(BitConverter.GetBytes(this.Length));
-            byte[] inBytes = unicodeEncoding.GetBytes(this.In);
-            byte[] outBytes = new byte[inBytes.Length];
-            Array.Copy(unicodeEncoding.GetBytes(this.Out), outBytes, outBytes.Length);
-            bytes.AddRange(inBytes);
-            bytes.AddRange(outBytes);
-            this.Bytes = bytes.ToArray();
+            // https://github.com/kfcd/fanjian
+            TextJsonItem[] data = Utils.GetJson<TextJsonItem[]>("jianfan.json");
+            TextDataCollection collection = new(data, address);
+
+            return collection.Bytes;
         }
-    }
-    public class TextDataCategory(short key)
-    {
-        public static IReadOnlyList<TextDataCategory> All => _all;
-        private static List<TextDataCategory> _all = new();
-        public readonly short Key = key;
-        public List<TextDataItem> List = new();
-        public int Size => List.Count;
-        public byte[] Bytes
+        private class TextJsonItem
         {
-            get
+            [JsonPropertyName("o")]
+            public string Out { get; set; }
+            [JsonPropertyName("i")]
+            public string In { get; set; }
+        }
+        private class TextDataItem
+        {
+            public readonly string In;
+            public readonly string Out;
+            public readonly int Length;
+            public readonly short CategoryKey;
+            public readonly byte[] Bytes;
+            public TextDataItem(string In, string Out)
             {
+                this.In = In;
+                this.Out = Out;
+                this.Length = In.Length;
+                this.CategoryKey = BitConverter.ToInt16(BitConverter.GetBytes(In[Length - 1]), 0);
+
+                /*
+                    struct {
+                        int textLength;
+                        char[textLength] in;
+                        char[textLength] out;
+                    };
+                 */
+                System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
                 List<byte> bytes = new();
-                bytes.AddRange(BitConverter.GetBytes(this.Size));
-                foreach (var item in List)
+                bytes.AddRange(BitConverter.GetBytes(this.Length));
+                byte[] inBytes = unicodeEncoding.GetBytes(this.In);
+                byte[] outBytes = new byte[inBytes.Length];
+                byte[] outOriginBytes = unicodeEncoding.GetBytes(this.Out);
+                for (int i = 0; i < outOriginBytes.Length; i++)
                 {
-                    bytes.AddRange(item.Bytes);
+                    int outBytesIndex = outBytes.Length - 1 - i;
+                    int outOriginBytesIndex = outOriginBytes.Length - 1 - i;
+                    if (outBytesIndex < 0) break;
+                    outBytes[outBytesIndex] = outOriginBytes[outOriginBytesIndex];
                 }
-                return bytes.ToArray();
+                bytes.AddRange(inBytes);
+                bytes.AddRange(outBytes);
+                this.Bytes = bytes.ToArray();
             }
         }
-        public static void AutoSort(TextDataItem item)
+        private class TextDataCategory(short key)
         {
-            foreach (var c in All)
+            public static IReadOnlyList<TextDataCategory> All => _all;
+            private static List<TextDataCategory> _all = [];
+            public readonly short Key = key;
+            public List<TextDataItem> List = [];
+            public int Size => List.Count;
+            public byte[] Bytes
             {
-                if (c.Key == item.CategoryKey)
+                get
                 {
-                    c.List.Add(item);
-                    return;
+                    List<byte> bytes = new();
+                    bytes.AddRange(BitConverter.GetBytes(this.Size));
+                    foreach (var item in List)
+                    {
+                        bytes.AddRange(item.Bytes);
+                    }
+                    return bytes.ToArray();
                 }
             }
-            TextDataCategory category = new(item.CategoryKey);
-            category.List.Add(item);
-            _all.Add(category);
+            public static void AutoSort(TextDataItem item)
+            {
+                foreach (var c in All)
+                {
+                    if (c.Key == item.CategoryKey)
+                    {
+                        c.List.Add(item);
+                        return;
+                    }
+                }
+                TextDataCategory category = new(item.CategoryKey);
+                category.List.Add(item);
+                _all.Add(category);
+            }
+        }
+        private class TextDataCollection
+        {
+            const int startIndex = 0x4E00;
+            const int endIndex = 0x9FFF;
+            public readonly IntPtr MapAddress;
+            public IntPtr DataAddres => IntPtr.Add(MapAddress, DataAddressOffset);
+            private int DataAddressOffset => (endIndex - startIndex + 1) * sizeof(int);
+            public readonly byte[] Bytes;
+            public TextDataCollection(TextJsonItem[] source, IntPtr address)
+            {
+                MapAddress = address;
+                System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
+                List<byte> bytes = new();
+                foreach (var item in source.OrderByDescending(i=>i.In.Length))
+                {
+                    TextDataItem dataItem = new(item.In, item.Out);
+                    TextDataCategory.AutoSort(dataItem);
+                }
+                List<byte> mapBytes = new byte[DataAddressOffset].ToList();
+                List<byte> dataBytes = [];
+                foreach (var category in TextDataCategory.All)
+                {
+                    int mapBytesIndex = (category.Key - startIndex) * sizeof(int);
+                    if (mapBytesIndex < 0) continue;
+                    int categoryOffset = DataAddressOffset + dataBytes.Count;
+                    mapBytes.InsertRange(mapBytesIndex, BitConverter.GetBytes(categoryOffset));
+                    dataBytes.AddRange(category.Bytes);
+                }
+                Bytes = mapBytes.Concat(dataBytes).ToArray();
+            }
         }
     }
 }
