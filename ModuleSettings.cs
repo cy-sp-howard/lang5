@@ -31,7 +31,7 @@ namespace BhModule.Lang5
             MemService.OnLoaded += delegate { module.memService.SetZhUI(ChineseUI.Value); };
             settings.DefineSetting(" ", false, () => "", () => "").SetDisabled();
 
-            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified To Traditional ", () => "Work when Chinese UI enable.");
+            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional ", () => "Work when Chinese UI enable.");
             this.Cht.SettingChanged += (sender, args) => { module.memService.SetCovert(Cht.Value); };
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
@@ -44,7 +44,6 @@ namespace BhModule.Lang5
             settings.DefineSetting("  ", false, () => "", () => "").SetDisabled();
 
             this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore changed memory when module unload.", () => "When close Blish, will return back original language setting");
-            this.RestoreMem.SettingChanged += (sender, args) => { module.memService.restoreWhenUnload = this.RestoreMem.Value; };
         }
     }
 }

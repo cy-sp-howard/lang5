@@ -28,7 +28,6 @@ namespace BhModule.Lang5
         };
         private OverwriteOpcodes TextConverterDetour;
         private bool loaded = false;
-        public bool restoreWhenUnload = true;
         public static event EventHandler OnLoaded;
 
         public MemService(Lang5Module module)
@@ -46,7 +45,7 @@ namespace BhModule.Lang5
         }
         public void Unload()
         {
-            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || !restoreWhenUnload) return;
+            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || !module.Settings.RestoreMem.Value) return;
             SetZhUI(false);
             foreach (var item in OverwriteOpcodes.All)
             {
