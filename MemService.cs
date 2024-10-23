@@ -206,7 +206,7 @@ namespace BhModule.Lang5
             c.push(r8);
             c.lea(rcx, __qword_ptr[rax + rcx * 0x2]);
             c.mov(r8, TextDataAddress.ToInt64());
-            c.lea(r8, __qword_ptr[r8 + si * 0x4]);
+            c.lea(r8, __qword_ptr[r8 + rsi * 0x4]);
             c.call(replaceTextFromCategory); // (lastText,currentLen,category)
             c.pop(r8);
             c.pop(rcx);
