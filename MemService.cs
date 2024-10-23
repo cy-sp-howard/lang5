@@ -33,6 +33,7 @@ namespace BhModule.Lang5
 
         public MemService(Lang5Module module)
         {
+            byte[] data = TextJson.GetTextBytes(TextDataAddress);
             this.module = module;
         }
         public void Load()
@@ -40,10 +41,7 @@ namespace BhModule.Lang5
             if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
             GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
         }
-        public void Upadate()
-        {
-
-        }
+        public void Upadate() { }
         public void Unload()
         {
             if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || !module.Settings.RestoreMem.Value) return;
@@ -180,7 +178,7 @@ namespace BhModule.Lang5
         }
         private void GenTextData()
         {
-            TextDataAddress = Utils.AllocMemory(40000);
+            TextDataAddress = Utils.AllocMemory(0x20000);
             byte[] data = TextJson.GetTextBytes(TextDataAddress);
             Utils.WriteMemory(TextDataAddress, data);
         }
@@ -196,25 +194,38 @@ namespace BhModule.Lang5
             ListCodeWriter codeWriter = new();
             Assembler c = new Assembler(64);
 
-            Label originOpcodesLabel = c.CreateLabel();
-            Label replaceTextFromCategory = c.CreateLabel();
-            Label replaceMatch = c.CreateLabel();
-            // rax text first addr; rcx current index; rdx r8 current len; rsi current char
-            c.cmp(si, 0x4e00);
-            c.jb(originOpcodesLabel);
-            c.push(rcx);
-            c.push(r8);
-            c.lea(rcx, __qword_ptr[rax + rcx * 0x2]);
-            c.mov(r8, TextDataAddress.ToInt64());
-            c.lea(r8, __qword_ptr[r8 + rsi * 0x4]);
-            c.call(replaceTextFromCategory); // (lastText,currentLen,category)
-            c.pop(r8);
-            c.pop(rcx);
-            c.Label(ref originOpcodesLabel);
             foreach (var item in TextConverterDetour.BackupInstructions)
             {
                 c.AddInstruction(item);
             }
+
+            Label replaceTextFromCategory = c.CreateLabel();
+            Label replaceMatch = c.CreateLabel();
+            Label afterReplace = c.CreateLabel();
+            Label back = c.CreateLabel();
+            // rax text first addr; rcx current index; rdx r8 current len; rsi current char
+            c.cmp(si, 0x4e00);
+            c.jb(back);
+            c.push(rax);
+            c.push(rbx);
+            c.push(rcx);
+            c.push(r8);
+            c.mov(rbx, TextDataAddress.ToInt64());
+            c.sub(rsi, 0x4e00);
+            c.lea(r8, __qword_ptr[rbx + rsi * 0x4]);
+            c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 lastText
+            c.xor(rax, rax);
+            c.mov(eax, __qword_ptr[r8]);
+            c.test(eax, eax);
+            c.je(afterReplace);
+            c.lea(r8, __qword_ptr[rbx + rax]); // arg2 category address
+            c.call(replaceTextFromCategory); // (lastText,currentLen,category)
+            c.Label(ref afterReplace);
+            c.pop(r8);
+            c.pop(rcx);
+            c.pop(rbx);
+            c.pop(rax);
+            c.Label(ref back);
             //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
             c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
             c.int3();
@@ -232,20 +243,22 @@ namespace BhModule.Lang5
             c.push(rdi);
             c.push(r8);
             c.push(r9);
-            c.mov(r9, rdx); // backup len
             c.xor(rbx, rbx);
             c.xor(rsi, rsi);
             c.mov(esi, __qword_ptr[r8]); // category list len
             c.lea(rdi, __qword_ptr[r8 + 0x4]); // Item[0]
+            c.mov(r9, rdx); // backup len
             c.Label(ref replaceTextFromCategoryLoopStart);
             c.dec(esi); // list remain;
             c.mov(ebx, __qword_ptr[rdi]); // item[n] len
-            c.lea(rdx, __qword_ptr[rdi + 0x4]); // item[n] stringInAddr
-            c.mov(rdx, rdx + rbx);
-            c.mov(r8, rdx); // item[n] stringOut first address
-            c.dec(rdx); // item[n] stringIn last address
-            c.lea(rdi, __qword_ptr[r8 + r9]); // next item[n]
-            c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,replacefirstTextAddr,length)
+            c.lea(rdx, __qword_ptr[rdi + 0x4]); // item[n] first text address
+            c.lea(rdx, __qword_ptr[rdx + rbx * 0x2]);
+            c.lea(rdi, __qword_ptr[rdx + rbx * 0x2]); // next item[n]
+            c.sub(rdx, 0x2); // item[n] stringIn last text address
+            c.cmp(r9d, ebx);
+            c.jb(replaceTextFromCategoryLoopStart);
+            c.mov(r8, rbx);
+            c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,matchLength)
             c.test(esi, esi);
             c.je(replaceTextFromCategoryEnd);
             c.test(rax, rax);
@@ -258,12 +271,12 @@ namespace BhModule.Lang5
             c.pop(rdx);
             c.pop(rbx);
             c.pop(rax);
-            c.ret(); 
+            c.ret();
             c.int3();
             c.int3();
             c.int3();
 
-            // replaceMatch(targetLastTextAddr,matchLastTextAddr,replacefirstTextAddr,length)
+            // replaceMatch(targetLastTextAddr,matchLastTextAddr,matchLength)
             Label replaceMatchLoopStart = c.CreateLabel();
             Label replaceMatchFalse = c.CreateLabel();
             Label replaceMatchTrue = c.CreateLabel();
@@ -273,9 +286,11 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rbx);
             c.push(rdx);
+            c.push(r8);
             c.push(r9);
             c.push(r10);
-            c.mov(r10, r9); // backup length
+            c.lea(r10, rdx + 0x2); // stringOut first text address
+            c.mov(r9, r8); // backup length
             c.xor(rax, rax);
             c.xor(rbx, rbx);
             c.Label(ref replaceMatchLoopStart);
@@ -285,17 +300,17 @@ namespace BhModule.Lang5
             c.jne(replaceMatchFalse); // not match
             c.lea(rcx, __qword_ptr[rcx - 0x2]); // previous text address
             c.lea(rdx, __qword_ptr[rdx - 0x2]); // previous text address 
-            c.test(r9, r9); // check remain
+            c.dec(r8);
+            c.test(r8, r8); // check matchText remain
             c.je(replaceMatchTrue); // is match
-            c.dec(r9); // remain
             c.jmp(replaceMatchLoopStart);
             c.Label(ref replaceMatchTrue);
-            c.mov(bx, __qword_ptr[r8]);
+            c.mov(bx, __qword_ptr[r10]);  // stringOut first text address
             c.mov(__qword_ptr[rcx + 0x2], bx); // copy
-            c.lea(r8, __qword_ptr[r8 + 0x2]); // next text
+            c.lea(r10, __qword_ptr[r10 + 0x2]); // next text
             c.lea(rcx, __qword_ptr[rcx + 0x2]); // next text
-            c.inc(r9);
-            c.cmp(r10, r9); // check handled char
+            c.inc(r8);
+            c.cmp(r9, r8); // check handled char
             c.je(replaceCopied);
             c.jmp(replaceMatchTrue);
             c.Label(ref replaceCopied);
@@ -306,6 +321,7 @@ namespace BhModule.Lang5
             c.Label(ref replaceMatchEnd);
             c.pop(r10);
             c.pop(r9);
+            c.pop(r8);
             c.pop(rdx);
             c.pop(rbx);
             c.pop(rcx);
@@ -467,14 +483,14 @@ namespace BhModule.Lang5
                     TextDataItem dataItem = new(item.In, item.Out);
                     TextDataCategory.AutoSort(dataItem);
                 }
-                List<byte> mapBytes = new byte[DataAddressOffset].ToList();
+                byte[] mapBytes = new byte[DataAddressOffset];
                 List<byte> dataBytes = [];
                 foreach (var category in TextDataCategory.All)
                 {
                     int mapBytesIndex = (category.Key - startIndex) * sizeof(int);
                     if (mapBytesIndex < 0) continue;
-                    int categoryOffset = DataAddressOffset + dataBytes.Count;
-                    mapBytes.InsertRange(mapBytesIndex, BitConverter.GetBytes(categoryOffset));
+                    byte[] categoryOffsetBytes = BitConverter.GetBytes(DataAddressOffset + dataBytes.Count);
+                    Array.Copy(categoryOffsetBytes, 0, mapBytes, mapBytesIndex, categoryOffsetBytes.Length);
                     dataBytes.AddRange(category.Bytes);
                 }
                 Bytes = mapBytes.Concat(dataBytes).ToArray();
