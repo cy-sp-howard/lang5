@@ -422,14 +422,14 @@ namespace BhModule.Lang5
             public readonly string In;
             public readonly string Out;
             public readonly int Length;
-            public readonly short CategoryKey;
+            public readonly ushort CategoryKey;
             public readonly byte[] Bytes;
             public TextDataItem(string In, string Out)
             {
                 this.In = In;
                 this.Out = Out;
                 this.Length = In.Length;
-                this.CategoryKey = BitConverter.ToInt16(BitConverter.GetBytes(In[Length - 1]), 0);
+                this.CategoryKey = BitConverter.ToUInt16(BitConverter.GetBytes(In[Length - 1]), 0);
 
                 /*
                     struct {
@@ -456,11 +456,11 @@ namespace BhModule.Lang5
                 this.Bytes = bytes.ToArray();
             }
         }
-        private class TextDataCategory(short key)
+        private class TextDataCategory(ushort key)
         {
             public static IReadOnlyList<TextDataCategory> All => _all;
             private static List<TextDataCategory> _all = [];
-            public readonly short Key = key;
+            public readonly ushort Key = key;
             public List<TextDataItem> List = [];
             public int Size => List.Count;
             public byte[] Bytes
@@ -514,7 +514,7 @@ namespace BhModule.Lang5
                 foreach (var category in TextDataCategory.All)
                 {
                     int mapBytesIndex = (category.Key - startIndex) * sizeof(int);
-                    if (mapBytesIndex < 0) continue;
+                    if (mapBytesIndex < 0 || category.Key > endIndex) continue;
                     byte[] categoryOffsetBytes = BitConverter.GetBytes(DataAddressOffset + dataBytes.Count);
                     Array.Copy(categoryOffsetBytes, 0, mapBytes, mapBytesIndex, categoryOffsetBytes.Length);
                     dataBytes.AddRange(category.Bytes);

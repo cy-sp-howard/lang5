@@ -83,7 +83,6 @@ namespace BhModule.Lang5
             var output = new StringOutput();
             foreach (var instr in instructions)
             {
-                // Don't use instr.ToString(), it allocates more, uses masm syntax and default options
                 formatter.Format(instr, output);
                 Trace.Write(instr.IP.ToString("X16"));
                 Trace.Write(" ");
