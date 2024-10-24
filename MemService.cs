@@ -33,7 +33,6 @@ namespace BhModule.Lang5
 
         public MemService(Lang5Module module)
         {
-            //byte[] data = TextJson.GetTextBytes(TextDataAddress);
             this.module = module;
         }
         public void Load()
@@ -204,7 +203,7 @@ namespace BhModule.Lang5
             Label afterReplace = c.CreateLabel();
             Label back = c.CreateLabel();
             Label originText = c.CreateLabel();
-            // rax text first addr; rcx current index; rdx r8 current len; rsi current char
+            // rax text first addr; rcx current index; rsi current char
 
             c.push(rax);
             c.lea(rax, __qword_ptr[originText]);
@@ -217,7 +216,10 @@ namespace BhModule.Lang5
             c.push(rax);
             c.push(rbx);
             c.push(rcx);
+            c.push(rdx);
             c.push(r8);
+            c.mov(rdx, rcx);
+            c.inc(rdx); // current len
             c.mov(rbx, TextDataAddress.ToInt64());
             c.sub(rsi, 0x4e00);
             c.lea(r8, __qword_ptr[rbx + rsi * 0x4]);
@@ -230,6 +232,7 @@ namespace BhModule.Lang5
             c.call(replaceTextFromCategory); // (lastText,currentLen,category)
             c.Label(ref afterReplace);
             c.pop(r8);
+            c.pop(rdx);
             c.pop(rcx);
             c.pop(rbx);
             c.pop(rax);
@@ -257,6 +260,8 @@ namespace BhModule.Lang5
             c.lea(rdi, __qword_ptr[r8 + 0x4]); // Item[0]
             c.mov(r9, rdx); // backup len
             c.Label(ref replaceTextFromCategoryLoopStart);
+            c.test(esi, esi);
+            c.je(replaceTextFromCategoryEnd);
             c.dec(esi); // list remain;
             c.mov(ebx, __qword_ptr[rdi]); // item[n] len
             c.lea(rdx, __qword_ptr[rdi + 0x4]); // item[n] first text address
@@ -267,8 +272,6 @@ namespace BhModule.Lang5
             c.jb(replaceTextFromCategoryLoopStart);
             c.mov(r8, rbx);
             c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,matchLength,currentTargetLength)
-            c.test(esi, esi);
-            c.je(replaceTextFromCategoryEnd);
             c.test(rax, rax);
             c.je(replaceTextFromCategoryLoopStart);
             c.Label(ref replaceTextFromCategoryEnd);
@@ -330,7 +333,7 @@ namespace BhModule.Lang5
             c.je(replaceCopied);
             c.jmp(replaceMatchTrue);
             c.Label(ref replaceCopied);
-            c.xor(rax, rax); 
+            c.xor(rax, rax);
             c.inc(rax); // true
             c.jmp(replaceMatchEnd);
             c.Label(ref replaceMatchFalse);
