@@ -177,6 +177,8 @@ namespace BhModule.Lang5
         }
         private void GenTextData()
         {
+            // merge json by path or text
+            // auto calc bytes then alloc
             TextDataAddress = Utils.AllocMemory(0x30000);
             byte[] data = TextJson.GetTextBytes(TextDataAddress);
             Utils.WriteMemory(TextDataAddress, data);
