@@ -177,7 +177,7 @@ namespace BhModule.Lang5
         }
         private void GenTextData()
         {
-            TextDataAddress = Utils.AllocMemory(0x20000);
+            TextDataAddress = Utils.AllocMemory(0x30000);
             byte[] data = TextJson.GetTextBytes(TextDataAddress);
             Utils.WriteMemory(TextDataAddress, data);
         }
