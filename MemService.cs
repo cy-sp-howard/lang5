@@ -33,7 +33,7 @@ namespace BhModule.Lang5
 
         public MemService(Lang5Module module)
         {
-            byte[] data = TextJson.GetTextBytes(TextDataAddress);
+            //byte[] data = TextJson.GetTextBytes(TextDataAddress);
             this.module = module;
         }
         public void Load()
@@ -203,7 +203,13 @@ namespace BhModule.Lang5
             Label replaceMatch = c.CreateLabel();
             Label afterReplace = c.CreateLabel();
             Label back = c.CreateLabel();
+            Label originText = c.CreateLabel();
             // rax text first addr; rcx current index; rdx r8 current len; rsi current char
+
+            c.push(rax);
+            c.lea(rax, __qword_ptr[originText]);
+            c.mov(__qword_ptr[rax + rcx * 0x2], si);
+            c.pop(rax);
             c.cmp(si, 0x4e00);
             c.jb(back);
             c.push(rax);
@@ -258,7 +264,7 @@ namespace BhModule.Lang5
             c.cmp(r9d, ebx);
             c.jb(replaceTextFromCategoryLoopStart);
             c.mov(r8, rbx);
-            c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,matchLength)
+            c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,matchLength,currentTargetLength)
             c.test(esi, esi);
             c.je(replaceTextFromCategoryEnd);
             c.test(rax, rax);
@@ -289,7 +295,15 @@ namespace BhModule.Lang5
             c.push(r8);
             c.push(r9);
             c.push(r10);
+            c.push(r11);
+            c.xor(rax, rax);
+            c.lea(rax, rax + r8 * 0x2);
+            c.sub(rcx, rax);
+            c.mov(r11, rcx);
             c.lea(r10, rdx + 0x2); // stringOut first text address
+            c.lea(rax, __qword_ptr[originText]);
+            c.lea(rcx, rax + r9 * 0x2);
+            c.lea(rcx, rcx - 0x2); // origin last text address
             c.mov(r9, r8); // backup length
             c.xor(rax, rax);
             c.xor(rbx, rbx);
@@ -302,23 +316,25 @@ namespace BhModule.Lang5
             c.lea(rdx, __qword_ptr[rdx - 0x2]); // previous text address 
             c.dec(r8);
             c.test(r8, r8); // check matchText remain
-            c.je(replaceMatchTrue); // is match
+            c.je(replaceMatchTrue); // is all match
             c.jmp(replaceMatchLoopStart);
             c.Label(ref replaceMatchTrue);
             c.mov(bx, __qword_ptr[r10]);  // stringOut first text address
-            c.mov(__qword_ptr[rcx + 0x2], bx); // copy
+            c.mov(__qword_ptr[r11 + 0x2], bx); // copy
             c.lea(r10, __qword_ptr[r10 + 0x2]); // next text
-            c.lea(rcx, __qword_ptr[rcx + 0x2]); // next text
+            c.lea(r11, __qword_ptr[r11 + 0x2]); // next text
             c.inc(r8);
             c.cmp(r9, r8); // check handled char
             c.je(replaceCopied);
             c.jmp(replaceMatchTrue);
             c.Label(ref replaceCopied);
-            c.mov(rax, 0x1); // true
+            c.xor(rax, rax); 
+            c.inc(rax); // true
             c.jmp(replaceMatchEnd);
             c.Label(ref replaceMatchFalse);
-            c.mov(rax, 0x0); // false
+            c.xor(rax, rax); // false
             c.Label(ref replaceMatchEnd);
+            c.pop(r11);
             c.pop(r10);
             c.pop(r9);
             c.pop(r8);
@@ -326,6 +342,11 @@ namespace BhModule.Lang5
             c.pop(rbx);
             c.pop(rcx);
             c.ret();
+            c.nop();
+            c.nop();
+            c.nop();
+            c.Label(ref originText);
+            c.nop();
 
             c.Assemble(codeWriter, (ulong)TextConverterAddress.ToInt64());
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), ZHFuncAddress);
