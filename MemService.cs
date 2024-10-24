@@ -212,6 +212,8 @@ namespace BhModule.Lang5
             c.pop(rax);
             c.cmp(si, 0x4e00);
             c.jb(back);
+            c.cmp(si, 0x9FFF);
+            c.ja(back);
             c.push(rax);
             c.push(rbx);
             c.push(rcx);
