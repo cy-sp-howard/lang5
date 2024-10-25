@@ -354,8 +354,9 @@ namespace BhModule.Lang5
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), ZHFuncAddress);
             Utils.WriteMemory(TextConverterAddress, codeWriter.data.ToArray());
         }
-        public void ReloadConverter()
+        public int ReloadConverter()
         {
+            if (!loaded) return 1;
             IntPtr prepFreeAddr1 = TextDataAddress;
             IntPtr prepFreeAddr2 = TextConverterAddress;
 
@@ -367,6 +368,7 @@ namespace BhModule.Lang5
 
             Utils.FreeMemory(prepFreeAddr1);
             Utils.FreeMemory(prepFreeAddr2);
+            return 0;
         }
         private byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
         {

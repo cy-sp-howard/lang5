@@ -1,9 +1,11 @@
 ﻿using Blish_HUD;
+using Blish_HUD.Graphics.UI;
 using Blish_HUD.Modules;
 using Blish_HUD.Modules.Managers;
 using Blish_HUD.Settings;
 using Microsoft.Xna.Framework;
 using System.ComponentModel.Composition;
+using System.Runtime;
 using System.Threading.Tasks;
 
 namespace BhModule.Lang5
@@ -33,6 +35,10 @@ namespace BhModule.Lang5
         protected override void DefineSettings(SettingCollection settings)
         {
             this.Settings = new ModuleSettings(this, settings);
+        }
+        public override IView GetSettingsView()
+        {
+            return new Lang5SettingsView(SettingsManager.ModuleSettings);
         }
 
         protected override void Initialize()

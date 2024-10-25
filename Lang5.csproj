@@ -77,6 +77,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
+    <None Include="manifest.json" />
     <None Include="ref\jianfan.json" />
   </ItemGroup>
   <ItemGroup>
@@ -98,10 +99,10 @@
   </PropertyGroup>
   <Target Name="BuildLang5Module" AfterTargets="Build">
     <Delete Files="$(Lang5BhmPath)" />
-	<ItemGroup>
-	  <RefFiles Include="$(OutDir)ref\**" />
-	</ItemGroup>
-	<Copy SourceFiles="@(RefFiles)" DestinationFolder="$(TempPath)ref\%(RecursiveDir)" />
+    <ItemGroup>
+      <RefFiles Include="$(OutDir)ref\**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RefFiles)" DestinationFolder="$(TempPath)ref\%(RecursiveDir)" />
     <Copy SourceFiles="$(OutDir)$(ProjectName).dll" DestinationFolder="$(TempPath)" />
     <Copy SourceFiles="$(OutDir)manifest.json" DestinationFolder="$(TempPath)" />
     <Copy SourceFiles="$(OutDir)Iced.dll" DestinationFolder="$(TempPath)" />
