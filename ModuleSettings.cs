@@ -36,7 +36,8 @@ namespace BhModule.Lang5
             this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional", () => "Work when Chinese UI enable.");
             this.Cht.SettingChanged += (sender, args) => { module.MemService.SetConvert(Cht.Value); };
             this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion source json path; English path only; \r\njson format: \r\n[{ \"i\" : \"zhs word target in\",\r\n  \"o\" : \"zht word same size\" }]");
-            this.ChtJson.SettingChanged += (sender, args) => { if (ValidateJson()) module.MemService.ReloadConverter(); };
+            this.ChtJson.SettingChanged += (sender, args) => { module.MemService.ReloadConverter(); };
+            this.ChtJson.SetValidation(ValidateJson);
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
             this.ChtKey.Value.Activated += (sender, args) =>
@@ -49,18 +50,17 @@ namespace BhModule.Lang5
 
             this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore changed memory when module unload.", () => "When close Blish, will return back original language setting");
         }
-        private bool ValidateJson()
+        private SettingValidationResult ValidateJson(string path)
         {
-            if (ChtJson.Value == "") return true;
+            if (path == "") return new(true);
             try
             {
-                Utils.GetJson<TextJson.TextJsonItem[]>(ChtJson.Value);
-                return true;
+                Utils.GetJson<TextJson.TextJsonItem[]>(path);
+                return new(true);
             }
             catch (Exception e)
             {
-                Utils.Notify.Show(e.Message);
-                return false;
+                return new(false, e.Message);
             }
         }
     }
