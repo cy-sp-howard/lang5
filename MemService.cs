@@ -2,14 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Iced.Intel;
 using static Iced.Intel.AssemblerRegisters;
-using System.Globalization;
-using System.Net;
-using Gw2Sharp.WebApi.V2.Models;
 
 namespace BhModule.Lang5
 {
@@ -62,7 +58,7 @@ namespace BhModule.Lang5
             Utils.WriteMemory(CallFuncPtr, funcBuffer.bytes);
             Thread.Sleep(100);
         }
-        public void SetCovert(bool enable)
+        public void SetConvert(bool enable)
         {
             if (!loaded) return;
             if (enable) TextConverterDetour.Write();
@@ -75,7 +71,7 @@ namespace BhModule.Lang5
             GenCaller();
             GenLangSetter();
             GenTextData();
-            GenTextCoverter();
+            GenTextConverter();
 
             loaded = true;
             OnLoaded?.Invoke(this, EventArgs.Empty);
@@ -178,12 +174,12 @@ namespace BhModule.Lang5
         private void GenTextData()
         {
             // merge json by path or text
-            // auto calc bytes then alloc
-            TextDataAddress = Utils.AllocMemory(0x30000);
-            byte[] data = TextJson.GetTextBytes(TextDataAddress);
+            byte[] data = TextJson.GetTextBytes();
+            int allocSize = (data.Length / 1000 + 1) * 1000;
+            TextDataAddress = Utils.AllocMemory(allocSize);
             Utils.WriteMemory(TextDataAddress, data);
         }
-        private void GenTextCoverter()
+        private void GenTextConverter()
         {
             TextConverterAddress = AllocNearMemory(1000);
 
@@ -359,6 +355,20 @@ namespace BhModule.Lang5
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), ZHFuncAddress);
             Utils.WriteMemory(TextConverterAddress, codeWriter.data.ToArray());
         }
+        public void ReloadConverter()
+        {
+            IntPtr prepFreeAddr1 = TextDataAddress;
+            IntPtr prepFreeAddr2 = TextConverterAddress;
+
+            TextConverterDetour.Undo();
+            OverwriteOpcodes.All.Remove(TextConverterDetour);
+            GenTextData();
+            GenTextConverter();
+            if (module.Settings.Cht.Value) TextConverterDetour.Write();
+
+            Utils.FreeMemory(prepFreeAddr1);
+            Utils.FreeMemory(prepFreeAddr2);
+        }
         private byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
         {
             List<byte> list = new List<byte>();
@@ -403,13 +413,27 @@ namespace BhModule.Lang5
     }
     public static class TextJson
     {
-        public static byte[] GetTextBytes(IntPtr address)
+        public static byte[] GetTextBytes()
         {
 
             // https://github.com/kfcd/fanjian
             TextJsonItem[] data = Utils.GetJson<TextJsonItem[]>("jianfan.json");
-            TextDataCollection collection = new(data, address);
 
+            TextJsonItem[] add = Utils.GetJson<TextJsonItem[]>("add.json");
+            TextJsonItem[] userAdd = [];
+            if (Lang5Module.Instance.Settings.ChtJson.Value != "")
+            {
+                try
+                {
+                    userAdd = Utils.GetJson<TextJsonItem[]>(Lang5Module.Instance.Settings.ChtJson.Value);
+                }
+                catch (Exception e)
+                {
+                    Utils.Notify.Show(e.Message);
+                }
+            }
+
+            TextDataCollection collection = new(data.Concat(add).Concat(userAdd).ToArray());
             return collection.Bytes;
         }
         private class TextJsonItem
@@ -484,6 +508,8 @@ namespace BhModule.Lang5
                 {
                     if (c.Key == item.CategoryKey)
                     {
+                        TextDataItem same = c.List.Find(i => i.In == item.In);
+                        c.List.Remove(same);
                         c.List.Add(item);
                         return;
                     }
@@ -492,18 +518,20 @@ namespace BhModule.Lang5
                 category.List.Add(item);
                 _all.Add(category);
             }
+            public static void Clear()
+            {
+                _all.Clear();
+            }
         }
         private class TextDataCollection
         {
             const int startIndex = 0x4E00;
             const int endIndex = 0x9FFF;
-            public readonly IntPtr MapAddress;
-            public IntPtr DataAddres => IntPtr.Add(MapAddress, DataAddressOffset);
             private int DataAddressOffset => (endIndex - startIndex + 1) * sizeof(int);
             public readonly byte[] Bytes;
-            public TextDataCollection(TextJsonItem[] source, IntPtr address)
+            public TextDataCollection(TextJsonItem[] source)
             {
-                MapAddress = address;
+                TextDataCategory.Clear();
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
                 List<byte> bytes = new();
                 foreach (var item in source.OrderByDescending(i => i.In.Length))

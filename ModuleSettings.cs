@@ -11,6 +11,7 @@ namespace BhModule.Lang5
         public SettingEntry<bool> ChineseUI { get; private set; }
         public SettingEntry<KeyBinding> ChtKey { get; private set; }
         public SettingEntry<bool> Cht { get; private set; }
+        public SettingEntry<string> ChtJson { get; private set; }
         public SettingEntry<bool> RestoreMem { get; private set; }
         public ModuleSettings(Lang5Module module, SettingCollection settings)
         {
@@ -31,8 +32,10 @@ namespace BhModule.Lang5
             MemService.OnLoaded += delegate { module.MemService.SetZhUI(ChineseUI.Value); };
             settings.DefineSetting(" ", false, () => "", () => "").SetDisabled();
 
-            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional ", () => "Work when Chinese UI enable.");
-            this.Cht.SettingChanged += (sender, args) => { module.MemService.SetCovert(Cht.Value); };
+            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional", () => "Work when Chinese UI enable.");
+            this.Cht.SettingChanged += (sender, args) => { module.MemService.SetConvert(Cht.Value); };
+            this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion json file path; only support English path; json format [{\"i\":\"your word\",\"o\":\"same size\"}]");
+            this.ChtJson.SettingChanged += (sender, args) => { module.MemService.ReloadConverter(); };
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
             this.ChtKey.Value.Activated += (sender, args) =>
@@ -40,7 +43,7 @@ namespace BhModule.Lang5
                 Cht.Value = !Cht.Value;
                 Utils.Notify.Show(Cht.Value ? "Enable Simplified Chinese To Traditional Chinese." : "Disable Simplified Chinese To Traditional Chinese.");
             };
-            MemService.OnLoaded += delegate { module.MemService.SetCovert(Cht.Value); };
+            MemService.OnLoaded += delegate { module.MemService.SetConvert(Cht.Value); };
             settings.DefineSetting("  ", false, () => "", () => "").SetDisabled();
 
             this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore changed memory when module unload.", () => "When close Blish, will return back original language setting");

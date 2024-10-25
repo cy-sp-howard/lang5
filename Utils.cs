@@ -102,10 +102,16 @@ namespace BhModule.Lang5
             byte[] buffer;
             using (MemoryStream fileStream = Lang5Module.Instance.ContentsManager.GetFileStream(filePath) as MemoryStream)
             {
-                buffer = fileStream.ToArray();
+                buffer = fileStream?.ToArray();
             }
-            T data = JsonSerializer.Deserialize<T>(buffer);
-            return data;
+            if (buffer != null) return JsonSerializer.Deserialize<T>(buffer);
+
+            string jsonText;
+            using (StreamReader sr = new StreamReader(filePath))
+            {
+                jsonText = sr.ReadToEnd();
+            }
+            return JsonSerializer.Deserialize<T>(jsonText);
         }
     }
     public static class UtilsExtern
