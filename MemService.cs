@@ -173,7 +173,6 @@ namespace BhModule.Lang5
         }
         private void GenTextData()
         {
-            // merge json by path or text
             byte[] data = TextJson.GetTextBytes();
             int allocSize = (data.Length / 1000 + 1) * 1000;
             TextDataAddress = Utils.AllocMemory(allocSize);
@@ -436,7 +435,7 @@ namespace BhModule.Lang5
             TextDataCollection collection = new(data.Concat(add).Concat(userAdd).ToArray());
             return collection.Bytes;
         }
-        private class TextJsonItem
+        public class TextJsonItem
         {
             [JsonPropertyName("o")]
             public string Out { get; set; }

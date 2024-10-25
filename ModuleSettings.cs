@@ -1,6 +1,7 @@
 ﻿using Blish_HUD.Input;
 using Blish_HUD.Settings;
 using Microsoft.Xna.Framework.Input;
+using System;
 
 namespace BhModule.Lang5
 {
@@ -34,8 +35,8 @@ namespace BhModule.Lang5
 
             this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional", () => "Work when Chinese UI enable.");
             this.Cht.SettingChanged += (sender, args) => { module.MemService.SetConvert(Cht.Value); };
-            this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion json file path; only support English path; json format [{\"i\":\"your word\",\"o\":\"same size\"}]");
-            this.ChtJson.SettingChanged += (sender, args) => { module.MemService.ReloadConverter(); };
+            this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion source json path; English path only; \r\njson format: \r\n[{ \"i\" : \"zhs word target in\",\r\n  \"o\" : \"zht word same size\" }]");
+            this.ChtJson.SettingChanged += (sender, args) => { if (ValidateJson()) module.MemService.ReloadConverter(); };
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
             this.ChtKey.Value.Activated += (sender, args) =>
@@ -47,6 +48,20 @@ namespace BhModule.Lang5
             settings.DefineSetting("  ", false, () => "", () => "").SetDisabled();
 
             this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore changed memory when module unload.", () => "When close Blish, will return back original language setting");
+        }
+        private bool ValidateJson()
+        {
+            if (ChtJson.Value == "") return true;
+            try
+            {
+                Utils.GetJson<TextJson.TextJsonItem[]>(ChtJson.Value);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Utils.Notify.Show(e.Message);
+                return false;
+            }
         }
     }
 }
