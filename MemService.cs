@@ -200,15 +200,16 @@ namespace BhModule.Lang5
             Label afterReplace = c.CreateLabel();
             Label back = c.CreateLabel();
             Label originText = c.CreateLabel();
-            // rax text first addr; rcx current index; rsi current char
+            Label replacStart = c.CreateLabel();
 
+            // rax text first addr; rcx current index; rsi current char;[r14+14] current len
             c.push(rax);
             c.lea(rax, __qword_ptr[originText]);
             c.mov(__qword_ptr[rax + rcx * 0x2], si);
             c.pop(rax);
-            c.cmp(si, 0x4e00);
+            c.cmp(si, TextJson.cjkStart);
             c.jb(back);
-            c.cmp(si, 0x9FFF);
+            c.cmp(si, TextJson.cjkEnd);
             c.ja(back);
             c.push(rax);
             c.push(rbx);
@@ -216,9 +217,9 @@ namespace BhModule.Lang5
             c.push(rdx);
             c.push(r8);
             c.mov(rdx, rcx);
-            c.inc(rdx); // current len
+            c.inc(rdx); // current index
             c.mov(rbx, TextDataAddress.ToInt64());
-            c.sub(rsi, 0x4e00);
+            c.sub(rsi, TextJson.cjkStart);
             c.lea(r8, __qword_ptr[rbx + rsi * 0x4]);
             c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 lastText
             c.xor(rax, rax);
@@ -246,7 +247,6 @@ namespace BhModule.Lang5
             c.Label(ref replaceTextFromCategory);
             c.push(rax);
             c.push(rbx);
-            c.push(rdx);
             c.push(rsi);
             c.push(rdi);
             c.push(r8);
@@ -255,24 +255,23 @@ namespace BhModule.Lang5
             c.xor(rsi, rsi);
             c.mov(esi, __qword_ptr[r8]); // category list len
             c.lea(rdi, __qword_ptr[r8 + 0x4]); // Item[0]
-            c.mov(r9, rdx); // backup len
             c.Label(ref replaceTextFromCategoryLoopStart);
             c.test(esi, esi);
             c.je(replaceTextFromCategoryEnd);
             c.dec(esi); // list remain;
-            c.mov(ebx, __qword_ptr[rdi]); // item[n] len
-            c.lea(rdx, __qword_ptr[rdi + 0x4]); // item[n] first text address
-            c.lea(rdx, __qword_ptr[rdx + rbx * 0x2]);
-            c.lea(rdi, __qword_ptr[rdx + rbx * 0x2]); // next item[n]
-            c.sub(rdx, 0x2); // item[n] stringIn last text address
-            c.cmp(r9d, ebx);
-            c.jb(replaceTextFromCategoryLoopStart);
-            c.mov(r8, rbx);
+            c.mov(ebx, __qword_ptr[rdi]); // item[n].in len
+            c.cmp(edx, ebx);
+            c.lea(rdi, __qword_ptr[rdi + 0x4]);  // item[n].in text
+            c.mov(ebx, __qword_ptr[rdi + rbx * 0x2]); // item[n].out len
+            c.lea(rdi, __qword_ptr[rdi + 0x4]);  // item[n].out text
+            c.lea(rdi, __qword_ptr[rdi + rbx * 0x2]);  // item[n+1]
+            c.jb(replaceTextFromCategoryLoopStart); // current target not enough len
+ 
+
             c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,matchLength,currentTargetLength)
             c.test(rax, rax);
             c.je(replaceTextFromCategoryLoopStart);
             c.Label(ref replaceTextFromCategoryEnd);
-            c.pop(r9);
             c.pop(r8);
             c.pop(rdi);
             c.pop(rsi);
@@ -284,7 +283,7 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            // replaceMatch(targetLastTextAddr,matchLastTextAddr,matchLength)
+            // match(refTargetLastTextAddr, inTextLenAddress)
             Label replaceMatchLoopStart = c.CreateLabel();
             Label replaceMatchFalse = c.CreateLabel();
             Label replaceMatchTrue = c.CreateLabel();
@@ -321,15 +320,6 @@ namespace BhModule.Lang5
             c.je(replaceMatchTrue); // is all match
             c.jmp(replaceMatchLoopStart);
             c.Label(ref replaceMatchTrue);
-            c.mov(bx, __qword_ptr[r10]);  // stringOut first text address
-            c.mov(__qword_ptr[r11 + 0x2], bx); // copy
-            c.lea(r10, __qword_ptr[r10 + 0x2]); // next text
-            c.lea(r11, __qword_ptr[r11 + 0x2]); // next text
-            c.inc(r8);
-            c.cmp(r9, r8); // check handled char
-            c.je(replaceCopied);
-            c.jmp(replaceMatchTrue);
-            c.Label(ref replaceCopied);
             c.xor(rax, rax);
             c.inc(rax); // true
             c.jmp(replaceMatchEnd);
@@ -344,6 +334,40 @@ namespace BhModule.Lang5
             c.pop(rbx);
             c.pop(rcx);
             c.ret();
+
+            // match(targetLastTextAddress, currentTargetIndexPtr, inLenAddress)
+
+
+            // replace(targetStartOverwriteAddress, currentTargetIndexPtr, inLenAddress)
+            Label replaceLoopStart = c.CreateLabel();
+            Label replaceLoopEnd = c.CreateLabel();
+            c.Label(ref replacStart);
+            c.push(rax);
+            c.xor(rax, rax);
+            c.mov(eax, __qword_ptr[r8]);
+            c.sub(__qword_ptr[rdx], eax);
+            c.lea(r8, __qword_ptr[r8 + 0x4]); // in text address
+            c.lea(r8, __qword_ptr[r8 + rax * 2]); // out len address
+            c.mov(eax, __qword_ptr[r8]); // out len
+            c.add(__qword_ptr[rdx], eax); // fix target last Index by  out.len - in.len
+            c.xor(rdx, rdx);
+            c.mov(eax, __qword_ptr[r8]); // out len
+            c.lea(r8, __qword_ptr[r8 + 0x4]); // out text start
+            c.Label(ref replaceLoopStart);
+            c.mov(dx, __qword_ptr[r8]);
+            c.mov(__qword_ptr[rcx], dx); // overwrite
+            c.dec(eax); // remain copy
+            c.test(eax, eax);
+            c.je(replaceLoopEnd);
+            c.lea(rcx, __qword_ptr[rcx + 0x2]);
+            c.lea(r8, __qword_ptr[r8 + 0x2]);
+            c.jmp(replaceLoopStart);
+            c.Label(ref replaceLoopEnd);
+            c.pop(rax);
+            c.ret();
+
+
+
             c.nop();
             c.nop();
             c.nop();
@@ -414,6 +438,8 @@ namespace BhModule.Lang5
     }
     public static class TextJson
     {
+        public const int cjkStart = 0x4E00;
+        public const int cjkEnd = 0x9FFF;
         public static byte[] GetTextBytes()
         {
 
@@ -448,36 +474,33 @@ namespace BhModule.Lang5
         {
             public readonly string In;
             public readonly string Out;
-            public readonly int Length;
+            public readonly int InLength;
+            public readonly int OutLength;
             public readonly ushort CategoryKey;
             public readonly byte[] Bytes;
             public TextDataItem(string In, string Out)
             {
                 this.In = In;
                 this.Out = Out;
-                this.Length = In.Length;
-                this.CategoryKey = BitConverter.ToUInt16(BitConverter.GetBytes(In[Length - 1]), 0);
+                this.InLength = In.Length;
+                this.OutLength = Out.Length;
+                this.CategoryKey = BitConverter.ToUInt16(BitConverter.GetBytes(In[InLength - 1]), 0);
 
                 /*
                     struct {
                         int textLength;
                         char[textLength] in;
-                        char[textLength] out;
+                        int outLength;
+                        char[outLength] out;
                     };
                  */
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
                 List<byte> bytes = new();
-                bytes.AddRange(BitConverter.GetBytes(this.Length));
+                bytes.AddRange(BitConverter.GetBytes(this.InLength));
                 byte[] inBytes = unicodeEncoding.GetBytes(this.In);
-                byte[] outBytes = new byte[inBytes.Length];
-                byte[] outOriginBytes = unicodeEncoding.GetBytes(this.Out);
-                for (int i = 0; i < outOriginBytes.Length; i++)
-                {
-                    int outBytesIndex = outBytes.Length - 1 - i;
-                    int outOriginBytesIndex = outOriginBytes.Length - 1 - i;
-                    if (outBytesIndex < 0) break;
-                    outBytes[outBytesIndex] = outOriginBytes[outOriginBytesIndex];
-                }
+                bytes.AddRange(BitConverter.GetBytes(this.OutLength));
+                byte[] outBytes = unicodeEncoding.GetBytes(this.Out);
+
                 bytes.AddRange(inBytes);
                 bytes.AddRange(outBytes);
                 this.Bytes = bytes.ToArray();
@@ -526,9 +549,7 @@ namespace BhModule.Lang5
         }
         private class TextDataCollection
         {
-            const int startIndex = 0x4E00;
-            const int endIndex = 0x9FFF;
-            private int DataAddressOffset => (endIndex - startIndex + 1) * sizeof(int);
+            private int DataAddressOffset => (cjkEnd - cjkStart + 1) * sizeof(int);
             public readonly byte[] Bytes;
             public TextDataCollection(TextJsonItem[] source)
             {
@@ -544,8 +565,8 @@ namespace BhModule.Lang5
                 List<byte> dataBytes = [];
                 foreach (var category in TextDataCategory.All)
                 {
-                    int mapBytesIndex = (category.Key - startIndex) * sizeof(int);
-                    if (mapBytesIndex < 0 || category.Key > endIndex) continue;
+                    int mapBytesIndex = (category.Key - cjkStart) * sizeof(int);
+                    if (mapBytesIndex < 0 || category.Key > cjkEnd) continue;
                     byte[] categoryOffsetBytes = BitConverter.GetBytes(DataAddressOffset + dataBytes.Count);
                     Array.Copy(categoryOffsetBytes, 0, mapBytes, mapBytesIndex, categoryOffsetBytes.Length);
                     dataBytes.AddRange(category.Bytes);
