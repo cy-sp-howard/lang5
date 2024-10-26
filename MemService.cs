@@ -180,32 +180,48 @@ namespace BhModule.Lang5
         }
         private void GenTextConverter()
         {
-            TextConverterAddress = AllocNearMemory(1000);
+            TextConverterAddress = AllocNearMemory(2000);
 
             IntPtr target = IntPtr.Add(refs["ch >= STRING_CHAR_FIRST"], 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
             TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress));
             IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
 
+            if (TextConverterDetour.BackupInstructions.Count != 2)
+            {
+                Utils.Notify.Show("Unexpected opcodes; can not generate chinese coverter.", 6000);
+                return;
+            }
+
             ListCodeWriter codeWriter = new();
             Assembler c = new Assembler(64);
 
+            //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
             foreach (var item in TextConverterDetour.BackupInstructions)
             {
                 c.AddInstruction(item);
             }
 
-            Label replaceTextFromCategory = c.CreateLabel();
-            Label replaceMatch = c.CreateLabel();
-            Label afterReplace = c.CreateLabel();
+            Label end = c.CreateLabel();
             Label back = c.CreateLabel();
+            Label originLength = c.CreateLabel();
             Label originText = c.CreateLabel();
-            Label replacStart = c.CreateLabel();
+            Label replaceTextFromCategory = c.CreateLabel();
+            Label match = c.CreateLabel();
+            Label replace = c.CreateLabel();
+            Label isEqual = c.CreateLabel();
+            Label getBackupLastTextAddress = c.CreateLabel();
+            Label nextItem = c.CreateLabel();
 
             // rax text first addr; rcx current index; rsi current char;[r14+14] current len
             c.push(rax);
+            c.test(rcx, rcx);
+            c.jne(c.@F);
+            c.mov(__dword_ptr[originLength], 0x0);
+            c.AnonymousLabel();
             c.lea(rax, __qword_ptr[originText]);
-            c.mov(__qword_ptr[rax + rcx * 0x2], si);
+            c.mov(__qword_ptr[rax + rcx * 0x2],si); // backup text
+            c.inc(__dword_ptr[originLength]); // backup length
             c.pop(rax);
             c.cmp(si, TextJson.cjkStart);
             c.jb(back);
@@ -216,41 +232,41 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rdx);
             c.push(r8);
-            c.mov(rdx, rcx);
-            c.inc(rdx); // current index
             c.mov(rbx, TextDataAddress.ToInt64());
             c.sub(rsi, TextJson.cjkStart);
-            c.lea(r8, __qword_ptr[rbx + rsi * 0x4]);
+            c.lea(r8, __qword_ptr[rbx + rsi * 0x4]); // map address
             c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 lastText
             c.xor(rax, rax);
             c.mov(eax, __qword_ptr[r8]);
-            c.test(eax, eax);
-            c.je(afterReplace);
+            c.test(eax, eax); // no category
+            c.je(end);
             c.lea(r8, __qword_ptr[rbx + rax]); // arg2 category address
-            c.call(replaceTextFromCategory); // (lastText,currentLen,category)
-            c.Label(ref afterReplace);
+            c.lea(rdx, __qword_ptr[r14 + 0x14]); // arg1 targetLenPtr
+            c.call(replaceTextFromCategory); // replaceTextFromCategory(targetLastAddress,targetLenPtr,category)
+            c.Label(ref end);
             c.pop(r8);
             c.pop(rdx);
             c.pop(rcx);
             c.pop(rbx);
             c.pop(rax);
             c.Label(ref back);
-            //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
             c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
             c.int3();
             c.int3();
             c.int3();
 
-            // replaceTextFromCategory(lastText,currentLen,category)
+            // replaceTextFromCategory(targetLastAddress,targetLenPtr,category)
             Label replaceTextFromCategoryLoopStart = c.CreateLabel();
             Label replaceTextFromCategoryEnd = c.CreateLabel();
             c.Label(ref replaceTextFromCategory);
             c.push(rax);
             c.push(rbx);
+            c.push(rcx);
             c.push(rsi);
             c.push(rdi);
             c.push(r8);
             c.push(r9);
+            c.mov(r9, rcx); // targetLastAddress
             c.xor(rbx, rbx);
             c.xor(rsi, rsi);
             c.mov(esi, __qword_ptr[r8]); // category list len
@@ -260,22 +276,26 @@ namespace BhModule.Lang5
             c.je(replaceTextFromCategoryEnd);
             c.dec(esi); // list remain;
             c.mov(ebx, __qword_ptr[rdi]); // item[n].in len
-            c.cmp(edx, ebx);
-            c.lea(rdi, __qword_ptr[rdi + 0x4]);  // item[n].in text
-            c.mov(ebx, __qword_ptr[rdi + rbx * 0x2]); // item[n].out len
-            c.lea(rdi, __qword_ptr[rdi + 0x4]);  // item[n].out text
-            c.lea(rdi, __qword_ptr[rdi + rbx * 0x2]);  // item[n+1]
-            c.jb(replaceTextFromCategoryLoopStart); // current target not enough len
- 
-
-            c.call(replaceMatch); // (targetLastTextAddr,matchLastTextAddr,matchLength,currentTargetLength)
+            c.cmp(__qword_ptr[originLength], ebx);
+            c.mov(rcx, rdi);
+            c.call(nextItem); // nextItem(item[n])
+            c.mov(rdi, rax);
+            c.jb(replaceTextFromCategoryLoopStart); // current item target len < in.length
+            c.call(match); // match(item[n])
             c.test(rax, rax);
             c.je(replaceTextFromCategoryLoopStart);
+            c.mov(r8, rcx); // inLenAddress (item[n])
+            c.lea(rcx, __qword_ptr[r9 + 0x1]); // targetLastAddress + 1
+            c.xor(r9, r9);
+            c.mov(r9d, __qword_ptr[r8]); // in.length
+            c.sub(rcx, r9); // targetOverwriteStartAddress
+            c.call(replace); // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress)
             c.Label(ref replaceTextFromCategoryEnd);
             c.pop(r8);
             c.pop(rdi);
             c.pop(rsi);
             c.pop(rdx);
+            c.pop(rcx);
             c.pop(rbx);
             c.pop(rax);
             c.ret();
@@ -283,73 +303,101 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            // match(refTargetLastTextAddr, inTextLenAddress)
-            Label replaceMatchLoopStart = c.CreateLabel();
-            Label replaceMatchFalse = c.CreateLabel();
-            Label replaceMatchTrue = c.CreateLabel();
-            Label replaceCopied = c.CreateLabel();
-            Label replaceMatchEnd = c.CreateLabel();
-            c.Label(ref replaceMatch);
+            // nextItem(current)
+            c.Label(ref nextItem);
             c.push(rcx);
-            c.push(rbx);
-            c.push(rdx);
-            c.push(r8);
-            c.push(r9);
-            c.push(r10);
-            c.push(r11);
             c.xor(rax, rax);
-            c.lea(rax, rax + r8 * 0x2);
-            c.sub(rcx, rax);
-            c.mov(r11, rcx);
-            c.lea(r10, rdx + 0x2); // stringOut first text address
-            c.lea(rax, __qword_ptr[originText]);
-            c.lea(rcx, rax + r9 * 0x2);
-            c.lea(rcx, rcx - 0x2); // origin last text address
-            c.mov(r9, r8); // backup length
-            c.xor(rax, rax);
-            c.xor(rbx, rbx);
-            c.Label(ref replaceMatchLoopStart);
-            c.mov(ax, __qword_ptr[rcx]); // get text
-            c.mov(bx, __qword_ptr[rdx]); // get text
-            c.cmp(ax, bx);
-            c.jne(replaceMatchFalse); // not match
-            c.lea(rcx, __qword_ptr[rcx - 0x2]); // previous text address
-            c.lea(rdx, __qword_ptr[rdx - 0x2]); // previous text address 
-            c.dec(r8);
-            c.test(r8, r8); // check matchText remain
-            c.je(replaceMatchTrue); // is all match
-            c.jmp(replaceMatchLoopStart);
-            c.Label(ref replaceMatchTrue);
-            c.xor(rax, rax);
-            c.inc(rax); // true
-            c.jmp(replaceMatchEnd);
-            c.Label(ref replaceMatchFalse);
-            c.xor(rax, rax); // false
-            c.Label(ref replaceMatchEnd);
-            c.pop(r11);
-            c.pop(r10);
-            c.pop(r9);
-            c.pop(r8);
-            c.pop(rdx);
-            c.pop(rbx);
+            c.mov(eax, __qword_ptr[rcx]); // in len
+            c.lea(rcx, __qword_ptr[rcx + 0x4]); // in text address
+            c.lea(rcx, __qword_ptr[rcx + rax]); // out len address
+            c.mov(eax, __qword_ptr[rcx]); // out len
+            c.lea(rcx, __qword_ptr[rcx + 0x4]); // out text address
+            c.lea(rcx, __qword_ptr[rcx + rax]); // next item
+            c.mov(rax, rcx);
             c.pop(rcx);
             c.ret();
+            c.int3();
+            c.int3();
+            c.int3();
 
-            // match(targetLastTextAddress, currentTargetIndexPtr, inLenAddress)
+
+            // match(inTextLenAddress)
+            Label matchLoopStart = c.CreateLabel();
+            Label matchFalse = c.CreateLabel();
+            Label matchTrue = c.CreateLabel();
+            Label matchEnd = c.CreateLabel();
+            c.Label(ref match);
+            c.push(rbx);
+            c.push(rcx);
+            c.push(rdx);
+            c.xor(rbx, rbx);
+            c.mov(ebx, __qword_ptr[rcx]); // in text length
+            c.lea(rcx, __qword_ptr[rcx + 0x4]); // in text address
+            c.call(getBackupLastTextAddress); // get backup origin text last address
+            c.sub(rax, rbx);
+            c.lea(rdx, __qword_ptr[rax + 0x1]);
+            c.call(isEqual);
+            c.pop(rdx);
+            c.pop(rcx);
+            c.pop(rbx);
+            c.ret();
+            c.int3();
+            c.int3();
+            c.int3();
 
 
-            // replace(targetStartOverwriteAddress, currentTargetIndexPtr, inLenAddress)
+            // isEqual(address1,addres2,size)
+            Label isEqualLoopStart = c.CreateLabel();
+            Label isEqualTrue = c.CreateLabel();
+            Label isEqualEnd = c.CreateLabel();
+
+            c.Label(ref isEqual);
+            c.push(rbx);
+            c.push(rcx);
+            c.push(rdx);
+            c.push(r8);
+            c.xor(rax, rax);
+            c.xor(rbx, rbx);
+            c.Label(ref isEqualLoopStart);
+            c.test(r8d, r8d);
+            c.je(isEqualTrue);
+            c.dec(r8d);
+            c.mov(ax, __qword_ptr[rcx]);
+            c.mov(bx, __qword_ptr[rdx]);
+            c.lea(rcx, __qword_ptr[rcx + 0x2]);
+            c.lea(rdx, __qword_ptr[rdx + 0x2]);
+            c.cmp(ax, bx);
+            c.je(isEqualLoopStart);
+            c.xor(rax, rax);
+            c.jmp(isEqualEnd);
+            c.Label(ref isEqualTrue);
+            c.xor(rax, rax);
+            c.inc(rax);
+            c.Label(ref isEqualEnd);
+            c.pop(r8);
+            c.pop(rdx);
+            c.pop(rcx);
+            c.pop(rbx);
+            c.ret();
+            c.int3();
+            c.int3();
+            c.int3();
+
+            // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress)
             Label replaceLoopStart = c.CreateLabel();
             Label replaceLoopEnd = c.CreateLabel();
-            c.Label(ref replacStart);
+            c.Label(ref replace);
             c.push(rax);
+            c.push(rcx);
+            c.push(rdx);
+            c.push(r8);
             c.xor(rax, rax);
             c.mov(eax, __qword_ptr[r8]);
             c.sub(__qword_ptr[rdx], eax);
             c.lea(r8, __qword_ptr[r8 + 0x4]); // in text address
             c.lea(r8, __qword_ptr[r8 + rax * 2]); // out len address
             c.mov(eax, __qword_ptr[r8]); // out len
-            c.add(__qword_ptr[rdx], eax); // fix target last Index by  out.len - in.len
+            c.add(__qword_ptr[rdx], eax); // fix target last Index by "out.len - in.len"
             c.xor(rdx, rdx);
             c.mov(eax, __qword_ptr[r8]); // out len
             c.lea(r8, __qword_ptr[r8 + 0x4]); // out text start
@@ -363,11 +411,30 @@ namespace BhModule.Lang5
             c.lea(r8, __qword_ptr[r8 + 0x2]);
             c.jmp(replaceLoopStart);
             c.Label(ref replaceLoopEnd);
+            c.pop(r8);
+            c.pop(rdx);
+            c.pop(rcx);
             c.pop(rax);
             c.ret();
+            c.int3();
+            c.int3();
+            c.int3();
 
+            // getBackupLastTextAddress()
+            c.Label(ref getBackupLastTextAddress);
+            c.push(rbx);
+            c.xor(rbx, rbx);
+            c.lea(rax, __qword_ptr[originText]);
+            c.lea(ebx, __qword_ptr[originLength]);
+            c.lea(rax, rbx + rax - 1);
+            c.pop(rbx);
+            c.ret();
+            c.int3();
+            c.int3();
+            c.int3();
 
-
+            c.Label(ref originLength);
+            c.nop();
             c.nop();
             c.nop();
             c.nop();
@@ -375,7 +442,7 @@ namespace BhModule.Lang5
             c.nop();
 
             c.Assemble(codeWriter, (ulong)TextConverterAddress.ToInt64());
-            //Utils.PrintOpcodes(codeWriter.data.ToArray(), ZHFuncAddress);
+            // Utils.PrintOpcodes(codeWriter.data.ToArray(), IntPtr.Zero);
             Utils.WriteMemory(TextConverterAddress, codeWriter.data.ToArray());
         }
         public int ReloadConverter()
