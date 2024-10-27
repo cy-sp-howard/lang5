@@ -11,16 +11,15 @@ From [Releases](https://github.com/cy-sp-howard/lang5/releases) page.
 3. Paste [Lang5.bhm](https://github.com/cy-sp-howard/lang5/releases) file into "modules" folder.
 4. Restart Blish HUD.
 
-More detail from Offical [Tutorial](https://blishhud.com/docs/user/installing-modules#manually-installing-modules).
+More detail from BLish Offical [Tutorial](https://blishhud.com/docs/user/installing-modules#manually-installing-modules).
 
 ## Use Guide
-* `p` default toggle chinese
-* `;` default toggle chinese conversion  
+* `p` default toggle Chinese
+* `;` default toggle Chinese conversion  
 ```js
 // Conversion Json Format
-// i.length == o.length 
 
-[{"i":"搜索","o":"搜尋"},{"i":"充值","o":"儲值"}]
+[{"i":"搜索","o":"搜尋"},{"i":"全屏","o":"全螢幕"}]
 ```
 ## Download Blish HUD
 From [Releases](https://github.com/blish-hud/Blish-HUD/releases) page here on the [Blish Repo](https://github.com/blish-hud/Blish-HUD).

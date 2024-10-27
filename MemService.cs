@@ -189,7 +189,7 @@ namespace BhModule.Lang5
 
             if (TextConverterDetour.BackupInstructions.Count != 2)
             {
-                Utils.Notify.Show("Unexpected opcodes; can not generate chinese coverter.", 6000);
+                Utils.Notify.Show("Unexpected opcodes; can not generate Chinese coverter.", 6000);
                 return;
             }
 
@@ -215,14 +215,18 @@ namespace BhModule.Lang5
 
             // rax text first addr; rcx current index; rsi current char;[r14+14] current len
             c.push(rax);
+            c.push(rcx);
             c.test(rcx, rcx);
             c.jne(c.@F);
             c.mov(__dword_ptr[originLength], 0x0);
             c.AnonymousLabel();
             c.lea(rax, __qword_ptr[originText]);
-            c.mov(__qword_ptr[rax + rcx * 0x2],si); // backup text
+            c.mov(ecx, __dword_ptr[originLength]);
+            c.mov(__qword_ptr[rax + rcx * 0x2], si); // backup text
             c.inc(__dword_ptr[originLength]); // backup length
+            c.pop(rcx);
             c.pop(rax);
+
             c.cmp(si, TextJson.cjkStart);
             c.jb(back);
             c.cmp(si, TextJson.cjkEnd);
@@ -236,7 +240,6 @@ namespace BhModule.Lang5
             c.sub(rsi, TextJson.cjkStart);
             c.lea(r8, __qword_ptr[rbx + rsi * 0x4]); // map address
             c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 lastText
-            c.xor(rax, rax);
             c.mov(eax, __qword_ptr[r8]);
             c.test(eax, eax); // no category
             c.je(end);
@@ -255,20 +258,21 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
+
             // replaceTextFromCategory(targetLastAddress,targetLenPtr,category)
             Label replaceTextFromCategoryLoopStart = c.CreateLabel();
             Label replaceTextFromCategoryEnd = c.CreateLabel();
+
             c.Label(ref replaceTextFromCategory);
             c.push(rax);
             c.push(rbx);
             c.push(rcx);
+            c.push(rdx);
             c.push(rsi);
             c.push(rdi);
             c.push(r8);
             c.push(r9);
             c.mov(r9, rcx); // targetLastAddress
-            c.xor(rbx, rbx);
-            c.xor(rsi, rsi);
             c.mov(esi, __qword_ptr[r8]); // category list len
             c.lea(rdi, __qword_ptr[r8 + 0x4]); // Item[0]
             c.Label(ref replaceTextFromCategoryLoopStart);
@@ -285,12 +289,18 @@ namespace BhModule.Lang5
             c.test(rax, rax);
             c.je(replaceTextFromCategoryLoopStart);
             c.mov(r8, rcx); // inLenAddress (item[n])
-            c.lea(rcx, __qword_ptr[r9 + 0x1]); // targetLastAddress + 1
-            c.xor(r9, r9);
-            c.mov(r9d, __qword_ptr[r8]); // in.length
-            c.sub(rcx, r9); // targetOverwriteStartAddress
+            c.mov(rbx, rdx); // backup arg1
+            c.mov(edx, __qword_ptr[r8]);
+            c.dec(edx);
+            c.mov(rax, 0x2);
+            c.mul(edx);
+            c.mov(edx, eax);
+            c.sub(r9, rax);
+            c.mov(rcx, r9);
+            c.mov(rdx, rbx);
             c.call(replace); // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress)
             c.Label(ref replaceTextFromCategoryEnd);
+            c.pop(r9);
             c.pop(r8);
             c.pop(rdi);
             c.pop(rsi);
@@ -303,16 +313,15 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            // nextItem(current)
+            // nextItem(item[n])
             c.Label(ref nextItem);
             c.push(rcx);
-            c.xor(rax, rax);
             c.mov(eax, __qword_ptr[rcx]); // in len
             c.lea(rcx, __qword_ptr[rcx + 0x4]); // in text address
-            c.lea(rcx, __qword_ptr[rcx + rax]); // out len address
+            c.lea(rcx, __qword_ptr[rcx + rax * 0x2]); // out len address
             c.mov(eax, __qword_ptr[rcx]); // out len
             c.lea(rcx, __qword_ptr[rcx + 0x4]); // out text address
-            c.lea(rcx, __qword_ptr[rcx + rax]); // next item
+            c.lea(rcx, __qword_ptr[rcx + rax * 0x2]); // next item
             c.mov(rax, rcx);
             c.pop(rcx);
             c.ret();
@@ -326,20 +335,25 @@ namespace BhModule.Lang5
             Label matchFalse = c.CreateLabel();
             Label matchTrue = c.CreateLabel();
             Label matchEnd = c.CreateLabel();
+
             c.Label(ref match);
-            c.push(rbx);
             c.push(rcx);
             c.push(rdx);
-            c.xor(rbx, rbx);
-            c.mov(ebx, __qword_ptr[rcx]); // in text length
+            c.push(r8);
+            c.mov(edx, __qword_ptr[rcx]); // in text length
+            c.mov(r8d, edx);
+            c.dec(edx); // in text last index;
+            c.mov(rax, 0x2);
+            c.mul(edx);
+            c.mov(edx, eax);
             c.lea(rcx, __qword_ptr[rcx + 0x4]); // in text address
             c.call(getBackupLastTextAddress); // get backup origin text last address
-            c.sub(rax, rbx);
-            c.lea(rdx, __qword_ptr[rax + 0x1]);
+            c.sub(rax, rdx);
+            c.mov(rdx, rax);
             c.call(isEqual);
+            c.pop(r8);
             c.pop(rdx);
             c.pop(rcx);
-            c.pop(rbx);
             c.ret();
             c.int3();
             c.int3();
@@ -356,8 +370,6 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rdx);
             c.push(r8);
-            c.xor(rax, rax);
-            c.xor(rbx, rbx);
             c.Label(ref isEqualLoopStart);
             c.test(r8d, r8d);
             c.je(isEqualTrue);
@@ -391,15 +403,12 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rdx);
             c.push(r8);
-            c.xor(rax, rax);
             c.mov(eax, __qword_ptr[r8]);
             c.sub(__qword_ptr[rdx], eax);
             c.lea(r8, __qword_ptr[r8 + 0x4]); // in text address
-            c.lea(r8, __qword_ptr[r8 + rax * 2]); // out len address
+            c.lea(r8, __qword_ptr[r8 + rax * 0x2]); // out len address
             c.mov(eax, __qword_ptr[r8]); // out len
             c.add(__qword_ptr[rdx], eax); // fix target last Index by "out.len - in.len"
-            c.xor(rdx, rdx);
-            c.mov(eax, __qword_ptr[r8]); // out len
             c.lea(r8, __qword_ptr[r8 + 0x4]); // out text start
             c.Label(ref replaceLoopStart);
             c.mov(dx, __qword_ptr[r8]);
@@ -423,10 +432,10 @@ namespace BhModule.Lang5
             // getBackupLastTextAddress()
             c.Label(ref getBackupLastTextAddress);
             c.push(rbx);
-            c.xor(rbx, rbx);
             c.lea(rax, __qword_ptr[originText]);
-            c.lea(ebx, __qword_ptr[originLength]);
-            c.lea(rax, rbx + rax - 1);
+            c.mov(ebx, __qword_ptr[originLength]);
+            c.dec(ebx); // len to last index
+            c.lea(rax, rax + rbx * 0x2);
             c.pop(rbx);
             c.ret();
             c.int3();
@@ -442,8 +451,8 @@ namespace BhModule.Lang5
             c.nop();
 
             c.Assemble(codeWriter, (ulong)TextConverterAddress.ToInt64());
-            // Utils.PrintOpcodes(codeWriter.data.ToArray(), IntPtr.Zero);
             Utils.WriteMemory(TextConverterAddress, codeWriter.data.ToArray());
+            // Utils.PrintOpcodes(codeWriter.data.ToArray(), IntPtr.Zero);
         }
         public int ReloadConverter()
         {
@@ -563,13 +572,14 @@ namespace BhModule.Lang5
                  */
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
                 List<byte> bytes = new();
+
                 bytes.AddRange(BitConverter.GetBytes(this.InLength));
                 byte[] inBytes = unicodeEncoding.GetBytes(this.In);
+                bytes.AddRange(inBytes);
                 bytes.AddRange(BitConverter.GetBytes(this.OutLength));
                 byte[] outBytes = unicodeEncoding.GetBytes(this.Out);
-
-                bytes.AddRange(inBytes);
                 bytes.AddRange(outBytes);
+
                 this.Bytes = bytes.ToArray();
             }
         }
@@ -595,6 +605,7 @@ namespace BhModule.Lang5
             }
             public static void AutoSort(TextDataItem item)
             {
+                if (item.In.Length == 0 || item.Out.Length == 0) return;
                 foreach (var c in All)
                 {
                     if (c.Key == item.CategoryKey)
