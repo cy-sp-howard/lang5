@@ -206,10 +206,9 @@ namespace BhModule.Lang5
                 c.AddInstruction(item);
             }
 
-            Label end = c.CreateLabel();
-            Label back = c.CreateLabel();
             Label originLength = c.CreateLabel();
             Label originText = c.CreateLabel();
+            // func
             Label replaceTextFromCategory = c.CreateLabel();
             Label match = c.CreateLabel();
             Label replace = c.CreateLabel();
@@ -217,7 +216,11 @@ namespace BhModule.Lang5
             Label getBackupLastTextAddress = c.CreateLabel();
             Label nextItem = c.CreateLabel();
 
+
             // rax text first addr; rcx current index; rsi current char;[r14+14] current len
+            Label end = c.CreateLabel();
+            Label back = c.CreateLabel();
+
             c.push(rax);
             c.push(rcx);
             c.test(rcx, rcx);
