@@ -187,10 +187,14 @@ namespace BhModule.Lang5
             TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress));
             IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
 
-            if (TextConverterDetour.BackupInstructions.Count != 2)
+            byte[] expectedBytes = [0x66, 0x89, 0x34, 0x48, 0x41, 0xff, 0x46];
+            for (int i = 0; i < expectedBytes.Length; i++)
             {
-                Utils.Notify.Show("Unexpected opcodes; can not generate Chinese coverter.", 6000);
-                return;
+                if(TextConverterDetour.BackupBytes[i] != expectedBytes[i])
+                {
+                    Utils.Notify.Show("Unexpected opcodes; can not generate Chinese coverter.", 6000);
+                    return;
+                }
             }
 
             ListCodeWriter codeWriter = new();
@@ -244,7 +248,7 @@ namespace BhModule.Lang5
             c.test(eax, eax); // no category
             c.je(end);
             c.lea(r8, __qword_ptr[rbx + rax]); // arg2 category address
-            c.lea(rdx, __qword_ptr[r14 + 0x14]); // arg1 targetLenPtr
+            c.lea(rdx, __qword_ptr[r14 + TextConverterDetour.BackupInstructions[1].MemoryDisplacement32]); // arg1 targetLenPtr
             c.call(replaceTextFromCategory); // replaceTextFromCategory(targetLastAddress,targetLenPtr,category)
             c.Label(ref end);
             c.pop(r8);
@@ -331,11 +335,6 @@ namespace BhModule.Lang5
 
 
             // match(inTextLenAddress)
-            Label matchLoopStart = c.CreateLabel();
-            Label matchFalse = c.CreateLabel();
-            Label matchTrue = c.CreateLabel();
-            Label matchEnd = c.CreateLabel();
-
             c.Label(ref match);
             c.push(rcx);
             c.push(rdx);
@@ -370,6 +369,8 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rdx);
             c.push(r8);
+            c.xor(rax,rax); // move word only reset 2 bytes,reset it for comfortable
+            c.xor(rbx,rbx);
             c.Label(ref isEqualLoopStart);
             c.test(r8d, r8d);
             c.je(isEqualTrue);
@@ -410,6 +411,7 @@ namespace BhModule.Lang5
             c.mov(eax, __qword_ptr[r8]); // out len
             c.add(__qword_ptr[rdx], eax); // fix target last Index by "out.len - in.len"
             c.lea(r8, __qword_ptr[r8 + 0x4]); // out text start
+            c.xor(rdx,rdx);
             c.Label(ref replaceLoopStart);
             c.mov(dx, __qword_ptr[r8]);
             c.mov(__qword_ptr[rcx], dx); // overwrite
