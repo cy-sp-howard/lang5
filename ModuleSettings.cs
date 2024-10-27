@@ -44,7 +44,7 @@ namespace BhModule.Lang5
 
             this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified to Traditional", () => "Work when Chinese UI enable.");
             this.Cht.SettingChanged += (sender, args) => { module.MemService.SetConvert(Cht.Value); };
-            this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion source json path; ENG PATH ONLY; \r\njson format: \r\n[{ \"i\" : \"zhs word target in\",\r\n  \"o\" : \"zht word same size\" }]");
+            this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion source json path; ENG PATH ONLY; \r\njson format: \r\n[{ \"i\" : \"ZHS\",\r\n  \"o\" : \"ZHT\" }]");
             this.ChtJson.SettingChanged += (sender, args) => { ReloadJson(); };
             this.ChtJson.SetValidation(ValidateJson);
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");

@@ -190,7 +190,7 @@ namespace BhModule.Lang5
             byte[] expectedBytes = [0x66, 0x89, 0x34, 0x48, 0x41, 0xff, 0x46];
             for (int i = 0; i < expectedBytes.Length; i++)
             {
-                if(TextConverterDetour.BackupBytes[i] != expectedBytes[i])
+                if (TextConverterDetour.BackupBytes[i] != expectedBytes[i])
                 {
                     Utils.Notify.Show("Unexpected opcodes; can not generate Chinese coverter.", 6000);
                     return;
@@ -372,8 +372,8 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rdx);
             c.push(r8);
-            c.xor(rax,rax); // move word only reset 2 bytes,reset it for comfortable
-            c.xor(rbx,rbx);
+            c.xor(rax, rax); // move word only reset 2 bytes,reset it for comfortable
+            c.xor(rbx, rbx);
             c.Label(ref isEqualLoopStart);
             c.test(r8d, r8d);
             c.je(isEqualTrue);
@@ -414,7 +414,7 @@ namespace BhModule.Lang5
             c.mov(eax, __qword_ptr[r8]); // out len
             c.add(__qword_ptr[rdx], eax); // fix target last Index by "out.len - in.len"
             c.lea(r8, __qword_ptr[r8 + 0x4]); // out text start
-            c.xor(rdx,rdx);
+            c.xor(rdx, rdx);
             c.Label(ref replaceLoopStart);
             c.mov(dx, __qword_ptr[r8]);
             c.mov(__qword_ptr[rcx], dx); // overwrite
@@ -565,7 +565,7 @@ namespace BhModule.Lang5
                 this.Out = Out;
                 this.InLength = In.Length;
                 this.OutLength = Out.Length;
-                this.CategoryKey = BitConverter.ToUInt16(BitConverter.GetBytes(In[InLength - 1]), 0);
+                this.CategoryKey = InLength == 0 ? (ushort)0 : BitConverter.ToUInt16(BitConverter.GetBytes(In[InLength - 1]), 0);
 
                 /*
                     struct {
