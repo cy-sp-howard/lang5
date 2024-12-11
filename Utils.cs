@@ -198,7 +198,8 @@ namespace BhModule.Lang5
                 long followAddress = rip + currentValue;
                 if (targetAddress == followAddress)
                 {
-                    return i;
+                    if(source[i - 1] == 0x0d && source[i - 2] == 0x8d && source[i - 3] == 0x48) return i;
+
                 };
             }
             return -1;
