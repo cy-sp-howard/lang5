@@ -146,7 +146,7 @@ namespace BhModule.Lang5
             }
             return FindBytes(addressPatterns, RelFindIndex);
         }
-        public static IntPtr[] FindBytes(List<byte[]> patterns, Func<IntPtr, byte[], byte[], int> findIndexFunc = null)
+        public static IntPtr[] FindBytes(List<byte[]> patterns, Func<IntPtr, byte[], byte[], byte[], int?> findIndexFunc = null)
         {
             Process process = GameService.GameIntegration.Gw2Instance.Gw2Process;
             ProcessModule module = process.MainModule;
@@ -161,9 +161,19 @@ namespace BhModule.Lang5
             IntPtr[] result = new IntPtr[patterns.Count];
             int foundCount = 0;
             byte[] buffer = new byte[totalMemoryBytesSize < pageSize ? totalMemoryBytesSize : pageSize];
+            int keepBufferTailLen = patterns.Select(i => i.Length).Max();
             do
             {
                 IntPtr pageStartAddr = IntPtr.Add(startAddr, (currentPage - 1) * pageSize);
+                byte[] previousPageBufferTail = buffer.Skip(buffer.Length - keepBufferTailLen).ToArray();
+                if (currentPage == maxPage)
+                {
+                    for (int i = 0; i < buffer.Length; i++)
+                    {
+                        buffer[i] = 0;
+                    }
+                }
+
                 UtilsExtern.ReadProcessMemory(process.Handle, pageStartAddr, buffer, buffer.Length, out IntPtr bufferReadSize);
 
 
@@ -171,12 +181,13 @@ namespace BhModule.Lang5
                 {
                     if (result[i] == IntPtr.Zero)
                     {
-                        Func<IntPtr, byte[], byte[], int> findIndex = findIndexFunc ?? DefaultFindIndex;
-                        int foundIndex = findIndex(pageStartAddr, buffer, patterns[i]);
-                        if (foundIndex > -1)
+                        Func<IntPtr, byte[], byte[], byte[], int?> findIndex = findIndexFunc ?? DefaultFindIndex;
+
+                        int? foundIndex = findIndex(pageStartAddr, buffer, patterns[i], previousPageBufferTail);
+                        if (foundIndex != null)
                         {
                             foundCount++;
-                            result[i] = IntPtr.Add(pageStartAddr, foundIndex);
+                            result[i] = IntPtr.Add(pageStartAddr, foundIndex ?? 0);
                         }
                     };
 
@@ -186,33 +197,42 @@ namespace BhModule.Lang5
             } while (currentPage <= maxPage);
             return result;
         }
-        static int RelFindIndex(IntPtr sourceAddress, byte[] source, byte[] target)
+        static int? RelFindIndex(IntPtr sourceAddress, byte[] source, byte[] target, byte[] previousSource)
         {
             long address = sourceAddress.ToInt64();
             long targetAddress = BitConverter.ToInt64(target, 0);
 
-            for (int i = 0; i < source.Length - 3; i++)
+            for (int i = -3; i < source.Length - 3; i++)
             {
                 long rip = address + i + 4;
-                int currentValue = BitConverter.ToInt32(source, i);
+                int currentValue = i >= 0 ? BitConverter.ToInt32(source, i) : BitConverter.ToInt32(previousSource.Skip(8 + i).Concat(source.Take(4 + i)).ToArray(), 0);
                 long followAddress = rip + currentValue;
                 if (targetAddress == followAddress)
                 {
-                    if(source[i - 1] == 0x0d && source[i - 2] == 0x8d && source[i - 3] == 0x48) return i;
+                    byte[] validateSource = source;
+                    int _i = i;
+                    if ((i - 3) < 0)
+                    {
+                        validateSource = previousSource.Skip(2).Concat(source.Take(2)).ToArray();
+                        _i = i + 3 + 3; // i - 3   min -6
+                    }
+                    if (source[_i - 1] == 0x0d && source[_i - 2] == 0x8d && source[_i - 3] == 0x48) return i;
 
                 };
             }
-            return -1;
+            return null;
         }
-        static int DefaultFindIndex(IntPtr sourceAddress, byte[] source, byte[] target)
+        static int? DefaultFindIndex(IntPtr sourceAddress, byte[] source, byte[] target, byte[] previousSource)
         {
-
-            for (int i = 0; i <= source.Length - target.Length; i++)
+            previousSource = previousSource.Skip(previousSource.Length - target.Length + 1).ToArray();
+            for (int i = previousSource.Length * -1; i <= source.Length - target.Length; i++)
             {
                 bool found = true;
                 for (int j = 0; j < target.Length; j++)
                 {
-                    if (source[i + j] != target[j])
+                    int sourceIndex = i + j;
+                    byte sourceByte = sourceIndex >= 0 ? source[sourceIndex] : previousSource[previousSource.Length + i];
+                    if (sourceByte != target[j])
                     {
                         found = false;
                         break;
@@ -223,7 +243,7 @@ namespace BhModule.Lang5
                     return i;
                 }
             }
-            return -1;
+            return null;
 
         }
     }
