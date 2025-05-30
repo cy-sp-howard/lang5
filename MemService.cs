@@ -180,7 +180,7 @@ namespace BhModule.Lang5
         }
         private void GenTextConverter()
         {
-            TextConverterAddress = AllocNearMemory(2000);
+            TextConverterAddress = AllocNearMemory(100000);
 
             IntPtr target = IntPtr.Add(refs["ch >= STRING_CHAR_FIRST"], 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
