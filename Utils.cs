@@ -11,6 +11,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.IO;
 using System.Text.Json;
+using Blish_HUD.Modules.Pkgs;
+using Blish_HUD.Modules;
+using System.Text.Json.Serialization;
 
 namespace BhModule.Lang5
 {
@@ -245,6 +248,45 @@ namespace BhModule.Lang5
             }
             return null;
 
+        }
+    }
+    public static class UpdateModule
+    {
+        public class UpdateManifest : PkgManifestV1
+        {
+            public UpdateManifest(Manifest manifest)
+            {
+                SetValue("Name", manifest.Name);
+                SetValue("Namespace", manifest.Namespace);
+                SetValue("Version", manifest.Version);
+                SetValue("Contributors", manifest.Contributors);
+                SetValue("Dependencies", manifest.Dependencies);
+                Url = manifest.Url;
+                Description = manifest.Description;
+            }
+            public void SetValue(string key, object value)
+            {
+                typeof(PkgManifest).GetProperty(key,
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic |
+                    System.Reflection.BindingFlags.Instance).SetValue(this, value);
+            }
+        }
+        public class Release
+        {
+            [JsonPropertyName("tag_name")]
+            public string Verison { get; set; }
+            [JsonPropertyName("assets")]
+            public List<File> Files { get; set; }
+        }
+        public class File
+        {
+            [JsonPropertyName("name")]
+            public string Name { get; set; }
+            [JsonPropertyName("browser_download_url")]
+            public string Url { get; set; }
+            [JsonPropertyName("digest")]
+            public string Hash { get; set; }
         }
     }
     public class OverwriteOpcodes

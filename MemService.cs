@@ -524,7 +524,8 @@ namespace BhModule.Lang5
         public static byte[] GetTextBytes()
         {
 
-            // https://github.com/kfcd/fanjian
+            // jianfan.json edited from https://github.com/kfcd/fanjian, appreciate kfcd.
+            // LICENSE http://creativecommons.org/licenses/by/3.0/deed.zh_TW
             TextJsonItem[] data = Utils.GetJson<TextJsonItem[]>("jianfan.json");
 
             TextJsonItem[] add = Utils.GetJson<TextJsonItem[]>("add.json");
