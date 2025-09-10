@@ -25,6 +25,7 @@ namespace BhModule.Lang5
         };
         private OverwriteOpcodes TextConverterDetour;
         private bool loaded = false;
+        public bool ForceRestoreMem = false;
         public static event EventHandler OnLoaded;
 
         public MemService(Lang5Module module)
@@ -39,7 +40,7 @@ namespace BhModule.Lang5
         public void Upadate() { }
         public void Unload()
         {
-            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || !module.Settings.RestoreMem.Value) return;
+            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || (!module.Settings.RestoreMem.Value && !ForceRestoreMem)) return;
             SetZhUI(false);
             foreach (var item in OverwriteOpcodes.All)
             {
@@ -96,7 +97,7 @@ namespace BhModule.Lang5
             List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
             if (opcodes.Count != 0 && opcodes[0].IsJmpNear)
             {
-                Utils.Notify.Show("Please restart game, can not handle codes which injected.", 6000);
+                Utils.Notify.Show("Please restart game, can not handle codes that injected.", 6000);
                 return 2;
             };
             return 0;

@@ -15,9 +15,7 @@ namespace BhModule.Lang5
     [Export(typeof(Blish_HUD.Modules.Module))]
     public class Lang5Module : Blish_HUD.Modules.Module
     {
-
         private static readonly Logger Logger = Logger.GetLogger<Lang5Module>();
-
         #region Service Managers
         internal SettingsManager SettingsManager => this.ModuleParameters.SettingsManager;
         internal ContentsManager ContentsManager => this.ModuleParameters.ContentsManager;
@@ -50,10 +48,7 @@ namespace BhModule.Lang5
         {
             this.MemService = new MemService(this);
             InstanceManager = GameService.Module.Modules.FirstOrDefault(m => m.ModuleInstance == this);
-
-
         }
-
         protected override async Task LoadAsync()
         {
             await CheckUpdate();
@@ -107,6 +102,7 @@ namespace BhModule.Lang5
         async public Task UpdateSelf()
         {
             if (!UpdateAvailable) return;
+            this.MemService.ForceRestoreMem = true;
             await GameService.Module.ModulePkgRepoHandler.ReplacePackage(LatestManifest, InstanceManager);
             GameService.Overlay.Restart();
         }

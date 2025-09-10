@@ -56,7 +56,7 @@ namespace BhModule.Lang5
             MemService.OnLoaded += delegate { module.MemService.SetConvert(Cht.Value); };
 
             this.AutoUpdate = settings.DefineSetting(nameof(this.AutoUpdate), false, () => "Auto Update", () => "");
-            this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore language setting, when Blish closed.", () => "If unchecked then close Blish HUD, You'll need restart your game to allow Blish HUD to recontrolled the language setting");
+            this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore Language Setting, When Blish Closed.", () => "If unchecked then close Blish HUD, You'll need restart your game to allow Blish HUD to recontrolled the language setting");
         }
         public void ReloadJson()
         {

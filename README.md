@@ -10,15 +10,17 @@ From [Releases](https://github.com/cy-sp-howard/lang5/releases) page.
 2. Left-click "Open settings folder".
 3. Paste [Lang5.bhm](https://github.com/cy-sp-howard/lang5/releases) file into "modules" folder.
 4. Restart Blish HUD.
+5. Click the Blish HUD icon in the game then Left-click the Lang5 tab under `Manage Modules` section.
+6. Click the `Enable` button for enable Lang5 module.
 
 More detail from Blish Offical [Tutorial](https://blishhud.com/docs/user/installing-modules#manually-installing-modules).
 
 ## Use Guide
 * `p` default toggle Chinese
 * `;` default toggle Chinese conversion  
+* Create a conversion JSON file then paste your file path in the `Source File` input.
 ```js
-// Conversion Json Format
-
+// Conversion JSON file format.
 [{"i":"搜索","o":"搜尋"},{"i":"全屏","o":"全螢幕"}]
 ```
 ## Download Blish HUD
