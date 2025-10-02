@@ -77,10 +77,9 @@ namespace BhModule.Lang5
             client.DefaultRequestHeaders.Add("User-Agent", "BlishHUD/Lang5");
             client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
 
-            string latestReleaseResp = await client.GetStringAsync("https://api.github.com/repos/cy-sp-howard/lang5/releases/latest");
             try
             {
-
+                string latestReleaseResp = await client.GetStringAsync("https://api.github.com/repos/cy-sp-howard/lang5/releases/latest");
                 var latestRelease = JsonSerializer.Deserialize<UpdateModule.Release>(latestReleaseResp);
                 SemVer.Version latestVersion = new SemVer.Version(latestRelease.Verison);
                 LatestManifest.SetValue("Version", latestVersion);
