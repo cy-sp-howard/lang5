@@ -1,4 +1,4 @@
-# Lang5 - Blish Module
+# Lang5 - Blish HUD Module
 Gxxxx Wxxx 2 Chinese language selector.  
 Use it secretly.  
 If get banned, NO ONE CAN HELP YOU.
