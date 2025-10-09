@@ -67,6 +67,7 @@ namespace BhModule.Lang5
 
         protected override void Unload()
         {
+            this.Settings.Unload();
             this.MemService.Unload();
         }
         async public Task<bool> CheckUpdate()
