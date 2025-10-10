@@ -34,11 +34,7 @@ namespace BhModule.Lang5
             this.ChineseUI.SettingChanged += (sender, args) => { module.MemService.SetZhUI(ChineseUI.Value); };
             this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
             this.ChineseUIKey.Value.Enabled = true;
-            this.ChineseUIKey.Value.Activated += (sender, args) =>
-            {
-                ChineseUI.Value = !ChineseUI.Value;
-                Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
-            };
+            this.ChineseUIKey.Value.Activated += ToggleLang;
             MemService.OnLoaded += delegate { module.MemService.SetZhUI(ChineseUI.Value); };
 
             this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified Chinese to Traditional Chinese", () => "Work when Chinese UI enable.");
@@ -48,11 +44,7 @@ namespace BhModule.Lang5
             this.ChtJson.SetValidation(ValidateJson);
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
-            this.ChtKey.Value.Activated += (sender, args) =>
-            {
-                Cht.Value = !Cht.Value;
-                Utils.Notify.Show(Cht.Value ? "Enable Simplified Chinese To Traditional Chinese." : "Disable Simplified Chinese To Traditional Chinese.");
-            };
+            this.ChtKey.Value.Activated += ToggleChinese;
             MemService.OnLoaded += delegate { module.MemService.SetConvert(Cht.Value); };
 
             this.AutoUpdate = settings.DefineSetting(nameof(this.AutoUpdate), false, () => "Auto Update", () => "");
@@ -61,6 +53,21 @@ namespace BhModule.Lang5
         public void ReloadJson()
         {
             Lang5SettingsView.SetMsg(module.MemService.ReloadConverter() == 0 ? "" : "Now loading, retry later please.");
+        }
+        private void ToggleChinese(object sender, EventArgs args)
+        {
+            Cht.Value = !Cht.Value;
+            Utils.Notify.Show(Cht.Value ? "Enable Simplified Chinese To Traditional Chinese." : "Disable Simplified Chinese To Traditional Chinese.");
+        }
+        private void ToggleLang(object sender, EventArgs args)
+        {
+            ChineseUI.Value = !ChineseUI.Value;
+            Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
+        }
+        public void Unload()
+        {
+            this.ChtKey.Value.Activated -= ToggleChinese;
+            this.ChineseUIKey.Value.Activated -= ToggleLang;
         }
         private SettingValidationResult ValidateJson(string path)
         {
