@@ -3,12 +3,11 @@ using Blish_HUD.Graphics.UI;
 using Blish_HUD.Modules;
 using Blish_HUD.Modules.Managers;
 using Blish_HUD.Settings;
-using Microsoft.Xna.Framework;
 using System.ComponentModel.Composition;
-using System.Net.Http;
-using System.Threading.Tasks;
-using System.Text.Json;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace BhModule.Lang5
 {
@@ -46,29 +45,17 @@ namespace BhModule.Lang5
 
         protected override void Initialize()
         {
-            this.MemService = new MemService(this);
             InstanceManager = GameService.Module.Modules.FirstOrDefault(m => m.ModuleInstance == this);
-        }
-        protected override async Task LoadAsync()
-        {
-            await CheckUpdate();
-            if (Settings.AutoUpdate.Value && UpdateAvailable)
+            CheckUpdate().ContinueWith(_ =>
             {
-                await UpdateSelf();
-                return;
-            }
-            this.MemService.Load();
+                if (Settings.AutoUpdate.Value && UpdateAvailable) UpdateSelf();
+                else MemService = new MemService(this);
+            });
         }
-
-        protected override void Update(GameTime gameTime)
-        {
-            this.MemService.Upadate();
-        }
-
         protected override void Unload()
         {
-            this.Settings.Unload();
-            this.MemService.Unload();
+            Settings.Unload();
+            MemService?.Unload();
         }
         async public Task<bool> CheckUpdate()
         {
@@ -82,29 +69,33 @@ namespace BhModule.Lang5
             {
                 string latestReleaseResp = await client.GetStringAsync("https://api.github.com/repos/cy-sp-howard/lang5/releases/latest");
                 var latestRelease = JsonSerializer.Deserialize<UpdateModule.Release>(latestReleaseResp);
-                SemVer.Version latestVersion = new SemVer.Version(latestRelease.Verison);
+                SemVer.Version latestVersion = new(latestRelease.Verison);
                 LatestManifest.SetValue("Version", latestVersion);
                 if (UpdateAvailable)
                 {
-
                     var file = latestRelease.Files.Find(f => f.Name.Contains(".bhm"));
                     if (file != null)
                     {
                         LatestManifest.Hash = file.Hash.Substring(7);
                         LatestManifest.Location = file.Url;
                     }
-
-                };
+                }
+                ;
             }
             catch { }
             return UpdateAvailable;
         }
-        async public Task UpdateSelf()
+        public void UpdateSelf()
         {
             if (!UpdateAvailable) return;
-            this.MemService.ForceRestoreMem = true;
-            await GameService.Module.ModulePkgRepoHandler.ReplacePackage(LatestManifest, InstanceManager);
-            GameService.Overlay.Restart();
+            if (MemService is not null)
+            {
+                MemService.ForceRestoreMem = true;
+            }
+            GameService.Module.ModulePkgRepoHandler.ReplacePackage(LatestManifest, InstanceManager).ContinueWith(_ =>
+            {
+                GameService.Overlay.Restart();
+            });
         }
 
     }

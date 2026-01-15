@@ -119,7 +119,7 @@ namespace BhModule.Lang5
                         HeightSizingMode = SizingMode.AutoSize,
                         Parent = rootflowPanel
                     };
-                    if (!(settingView is SettingsView)) container.Show(settingView);
+                    if (settingView is not SettingsView) container.Show(settingView);
                     switch (setting.EntryKey)
                     {
                         case "ChtKey":
@@ -182,12 +182,12 @@ namespace BhModule.Lang5
         private class UpdateButton : Control
         {
             readonly private ModuleManager moduleManager = GameService.Module.Modules.FirstOrDefault(m => m.ModuleInstance == Lang5Module.Instance);
-            private StandardButton button = new()
+            private readonly StandardButton button = new()
             {
                 Text = "Update",
                 Width = 70
             };
-            private FlowPanel container = new()
+            private readonly FlowPanel container = new()
             {
                 ShowBorder = false,
                 FlowDirection = ControlFlowDirection.LeftToRight,
@@ -205,7 +205,7 @@ namespace BhModule.Lang5
                 container.Parent = parent;
                 Parent = container;
                 button.Parent = container;
-                button.Click += delegate { _ = Lang5Module.Instance.UpdateSelf(); };
+                button.Click += delegate { Lang5Module.Instance.UpdateSelf(); };
 
             }
             protected override void Paint(SpriteBatch spriteBatch, Rectangle bounds)

@@ -1,10 +1,11 @@
 ﻿using Blish_HUD;
+using Iced.Intel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
-using Iced.Intel;
+using System.Threading.Tasks;
 using static Iced.Intel.AssemblerRegisters;
 
 namespace BhModule.Lang5
@@ -27,17 +28,12 @@ namespace BhModule.Lang5
         private bool loaded = false;
         public bool ForceRestoreMem = false;
         public static event EventHandler OnLoaded;
-
         public MemService(Lang5Module module)
         {
             this.module = module;
-        }
-        public void Load()
-        {
             if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
-            GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
+            else GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
         }
-        public void Upadate() { }
         public void Unload()
         {
             if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || (!module.Settings.RestoreMem.Value && !ForceRestoreMem)) return;
@@ -55,8 +51,8 @@ namespace BhModule.Lang5
         {
             if (!loaded) return;
             byte[] lang = enable ? [0x5] : Utils.ReadMemory(OriginLangPtr, 1);
-            FuncBuffer funcBuffer = new FuncBuffer { address = LangSetterAddress, arg0 = lang[0] };
-            Utils.WriteMemory(CallFuncPtr, funcBuffer.bytes);
+            FuncBuffer funcBuffer = new() { address = LangSetterAddress, arg0 = lang[0] };
+            Utils.WriteMemory(CallFuncPtr, funcBuffer.Bytes);
             Thread.Sleep(100);
         }
         public void SetConvert(bool enable)
@@ -67,19 +63,22 @@ namespace BhModule.Lang5
         }
         private void Init()
         {
-            FindRefs();
-            if (ValidateAddress() > 0) return;
-            GenCaller();
-            GenLangSetter();
-            GenTextData();
-            GenTextConverter();
+            Task.Run(() =>
+            {
+                FindRefs();
+                if (ValidateAddress() > 0) return;
+                GenCaller();
+                GenLangSetter();
+                GenTextData();
+                GenTextConverter();
 
-            loaded = true;
-            OnLoaded?.Invoke(this, EventArgs.Empty);
+                loaded = true;
+                OnLoaded?.Invoke(this, EventArgs.Empty);
+            });
         }
         private void FindRefs()
         {
-            refs = Utils.FindReadonlyStringRefs(refs.Keys.ToArray());
+            refs = Utils.FindReadonlyStringRefs([.. refs.Keys]);
         }
         private int ValidateAddress()
         {
@@ -99,7 +98,8 @@ namespace BhModule.Lang5
             {
                 Utils.Notify.Show("Please restart game, can not handle codes that injected.", 6000);
                 return 2;
-            };
+            }
+            ;
             return 0;
         }
         private void GenCaller()
@@ -112,7 +112,7 @@ namespace BhModule.Lang5
 
             IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
-            Assembler c = new Assembler(64);
+            Assembler c = new(64);
             Label endLabel = c.CreateLabel();
             c.push(rax);
             c.push(rbx);
@@ -145,7 +145,7 @@ namespace BhModule.Lang5
 
             c.Assemble(codeWriter, (ulong)CallerAddress.ToInt64());
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), InjectionCallerAddress);
-            Utils.WriteMemory(CallerAddress, codeWriter.data.ToArray());
+            Utils.WriteMemory(CallerAddress, [.. codeWriter.data]);
             callDetour.Write();
 
         }
@@ -157,7 +157,7 @@ namespace BhModule.Lang5
             LangSetterAddress = AllocNearMemory(100);
 
             ListCodeWriter codeWriter = new();
-            Assembler c = new Assembler(64);
+            Assembler c = new(64);
             c.push(rbx);
             c.push(rsp);
             c.push(rcx);
@@ -170,7 +170,7 @@ namespace BhModule.Lang5
             c.ret();
             c.Assemble(codeWriter, (ulong)LangSetterAddress.ToInt64());
 
-            Utils.WriteMemory(LangSetterAddress, codeWriter.data.ToArray());
+            Utils.WriteMemory(LangSetterAddress, [.. codeWriter.data]);
         }
         private void GenTextData()
         {
@@ -199,7 +199,7 @@ namespace BhModule.Lang5
             }
 
             ListCodeWriter codeWriter = new();
-            Assembler c = new Assembler(64);
+            Assembler c = new(64);
 
             //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
             foreach (var item in TextConverterDetour.BackupInstructions)
@@ -457,7 +457,7 @@ namespace BhModule.Lang5
             c.nop();
 
             c.Assemble(codeWriter, (ulong)TextConverterAddress.ToInt64());
-            Utils.WriteMemory(TextConverterAddress, codeWriter.data.ToArray());
+            Utils.WriteMemory(TextConverterAddress, [.. codeWriter.data]);
             // Utils.PrintOpcodes(codeWriter.data.ToArray(), IntPtr.Zero);
         }
         public int ReloadConverter()
@@ -478,10 +478,8 @@ namespace BhModule.Lang5
         }
         private byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
         {
-            List<byte> list = new List<byte>();
-            list.Add(0xe9);
-            list.AddRange(BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5))));
-            return list.ToArray();
+            List<byte> list = [0xe9, .. BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5)))];
+            return [.. list];
         }
         private IntPtr AllocNearMemory(int size)
         {
@@ -495,7 +493,6 @@ namespace BhModule.Lang5
             }
             return IntPtr.Zero;
         }
-
     }
     public class FuncBuffer
     {
@@ -504,17 +501,17 @@ namespace BhModule.Lang5
         public long arg1;
         public long arg2;
         public long arg3;
-        public byte[] bytes
+        public byte[] Bytes
         {
             get
             {
-                List<byte> _bytes = new List<byte>();
-                _bytes.AddRange(BitConverter.GetBytes(address.ToInt64()));
-                _bytes.AddRange(BitConverter.GetBytes(arg0));
-                _bytes.AddRange(BitConverter.GetBytes(arg1));
-                _bytes.AddRange(BitConverter.GetBytes(arg2));
-                _bytes.AddRange(BitConverter.GetBytes(arg3));
-                return _bytes.ToArray();
+                return [
+                    .. BitConverter.GetBytes(address.ToInt64()),
+                    .. BitConverter.GetBytes(arg0),
+                    .. BitConverter.GetBytes(arg1),
+                    .. BitConverter.GetBytes(arg2),
+                    .. BitConverter.GetBytes(arg3),
+                ];
             }
         }
     }
@@ -543,7 +540,7 @@ namespace BhModule.Lang5
                 }
             }
 
-            TextDataCollection collection = new(data.Concat(add).Concat(userAdd).ToArray());
+            TextDataCollection collection = new([.. data, .. add, .. userAdd]);
             return collection.Bytes;
         }
         public class TextJsonItem
@@ -578,22 +575,20 @@ namespace BhModule.Lang5
                     };
                  */
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
-                List<byte> bytes = new();
-
-                bytes.AddRange(BitConverter.GetBytes(this.InLength));
+                List<byte> bytes = [.. BitConverter.GetBytes(this.InLength)];
                 byte[] inBytes = unicodeEncoding.GetBytes(this.In);
                 bytes.AddRange(inBytes);
                 bytes.AddRange(BitConverter.GetBytes(this.OutLength));
                 byte[] outBytes = unicodeEncoding.GetBytes(this.Out);
                 bytes.AddRange(outBytes);
 
-                this.Bytes = bytes.ToArray();
+                this.Bytes = [.. bytes];
             }
         }
         private class TextDataCategory(ushort key)
         {
             public static IReadOnlyList<TextDataCategory> All => _all;
-            private static List<TextDataCategory> _all = [];
+            private readonly static List<TextDataCategory> _all = [];
             public readonly ushort Key = key;
             public List<TextDataItem> List = [];
             public int Size => List.Count;
@@ -601,13 +596,12 @@ namespace BhModule.Lang5
             {
                 get
                 {
-                    List<byte> bytes = new();
-                    bytes.AddRange(BitConverter.GetBytes(this.Size));
+                    List<byte> bytes = [.. BitConverter.GetBytes(this.Size)];
                     foreach (var item in List)
                     {
                         bytes.AddRange(item.Bytes);
                     }
-                    return bytes.ToArray();
+                    return [.. bytes];
                 }
             }
             public static void AutoSort(TextDataItem item)
@@ -640,7 +634,7 @@ namespace BhModule.Lang5
             {
                 TextDataCategory.Clear();
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
-                List<byte> bytes = new();
+                List<byte> bytes = [];
                 foreach (var item in source.OrderByDescending(i => i.In.Length))
                 {
                     TextDataItem dataItem = new(item.In, item.Out);
@@ -656,7 +650,7 @@ namespace BhModule.Lang5
                     Array.Copy(categoryOffsetBytes, 0, mapBytes, mapBytesIndex, categoryOffsetBytes.Length);
                     dataBytes.AddRange(category.Bytes);
                 }
-                Bytes = mapBytes.Concat(dataBytes).ToArray();
+                Bytes = [.. mapBytes, .. dataBytes];
             }
         }
     }
