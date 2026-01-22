@@ -1,7 +1,7 @@
 # Lang5 - Blish-HUD Module
 Gxxxx Wxxx 2 Chinese language selector.  
 Use it secretly.  
-This module will write and read game memory.
+This module will write and read game memory.  
 If get banned, NO ONE CAN HELP YOU.
 
 ## Download
