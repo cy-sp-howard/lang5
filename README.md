@@ -1,6 +1,7 @@
 # Lang5 - Blish-HUD Module
 Gxxxx Wxxx 2 Chinese language selector.  
 Use it secretly.  
+This module will write and read game memory.
 If get banned, NO ONE CAN HELP YOU.
 
 ## Download
@@ -13,7 +14,7 @@ From [Releases](https://github.com/cy-sp-howard/lang5/releases) page.
 5. Click the Blish-HUD icon in the game then Left-click the Lang5 tab under `Manage Modules` section.
 6. Click the `Enable` button for enable Lang5 module.
 
-More detail from Blish-HUD Offical [Tutorial](https://blishhud.com/docs/user/installing-modules#manually-installing-modules).
+More detail from Blish-HUD Offical [Tutorial](https://blishhud.com/docs/user/guides/installing-modules#manually-installing-modules).
 
 ## Use Guide
 * `p` default toggle Chinese
