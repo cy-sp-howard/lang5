@@ -146,9 +146,6 @@ namespace BhModule.Lang5
                     }
                 }
             }
-
-            rootflowPanel.ShowBorder = true;
-            rootflowPanel.CanCollapse = true;
         }
         public static void SetMsg(string text)
         {
