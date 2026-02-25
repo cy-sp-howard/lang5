@@ -79,6 +79,7 @@
     <None Include="app.config" />
     <None Include="manifest.json" />
     <None Include="ref\jianfan.json" />
+    <None Include="ref\add.json" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BlishHUD">
@@ -102,7 +103,7 @@
   <Target Name="BuildBlishHUDModule" AfterTargets="Build">
     <Delete Files="$(Lang5BhmPath)" />
     <ItemGroup>
-      <RefFiles Include="$(OutDir)ref\**" />
+      <RefFiles Include="$(ProjectDir)ref\**" />
     </ItemGroup>
     <Copy SourceFiles="@(RefFiles)" DestinationFolder="$(TempPath)ref\%(RecursiveDir)" />
     <Copy SourceFiles="$(OutDir)$(ProjectName).dll" DestinationFolder="$(TempPath)" />

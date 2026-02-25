@@ -31,16 +31,16 @@ namespace BhModule.Lang5
         private void InitUISetting(SettingCollection settings)
         {
             this.ChineseUI = settings.DefineSetting(nameof(this.ChineseUI), true, () => "Use Chinese UI", () => "");
-            this.ChineseUI.SettingChanged += (sender, args) => { module.MemService.SetZhUI(ChineseUI.Value); };
+            this.ChineseUI.SettingChanged += ApplyLang;
             this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
             this.ChineseUIKey.Value.Enabled = true;
             this.ChineseUIKey.Value.Activated += ToggleLang;
             MemService.OnLoaded += delegate { module.MemService.SetZhUI(ChineseUI.Value); };
 
             this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified Chinese to Traditional Chinese", () => "Work when Chinese UI enable.");
-            this.Cht.SettingChanged += (sender, args) => { module.MemService.SetConvert(Cht.Value); };
+            this.Cht.SettingChanged += ApplyChtCoverter;
             this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion source json path; ENG PATH ONLY; \r\njson format: \r\n[{ \"i\" : \"ZHS\",\r\n  \"o\" : \"ZHT\" }]");
-            this.ChtJson.SettingChanged += (sender, args) => { ReloadJson(); };
+            this.ChtJson.SettingChanged += ReloadJson;
             this.ChtJson.SetValidation(ValidateJson);
             this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
             this.ChtKey.Value.Enabled = true;
@@ -50,9 +50,17 @@ namespace BhModule.Lang5
             this.AutoUpdate = settings.DefineSetting(nameof(this.AutoUpdate), false, () => "Auto Update", () => "");
             this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore Language Setting, When Blish-HUD Closed.", () => "If unchecked then close Blish-HUD, You'll need restart your game to allow Blish-HUD to recontrolled the language setting");
         }
-        public void ReloadJson()
+        public void ReloadJson(object sender, EventArgs args)
         {
             Lang5SettingsView.SetMsg(module.MemService.ReloadConverter() == 0 ? "" : "Now loading, retry later please.");
+        }
+        void ApplyLang(object sender, EventArgs args)
+        {
+            module.MemService.SetZhUI(ChineseUI.Value);
+        }
+        void ApplyChtCoverter(object sender, EventArgs args)
+        {
+            module.MemService.SetConvert(Cht.Value);
         }
         private void ToggleChinese(object sender, EventArgs args)
         {
@@ -68,6 +76,9 @@ namespace BhModule.Lang5
         {
             this.ChtKey.Value.Activated -= ToggleChinese;
             this.ChineseUIKey.Value.Activated -= ToggleLang;
+            ChineseUI.SettingChanged -= ApplyLang;
+            Cht.SettingChanged -= ApplyChtCoverter;
+            ChtJson.SettingChanged -= ReloadJson;
         }
         private SettingValidationResult ValidateJson(string path)
         {
@@ -141,7 +152,7 @@ namespace BhModule.Lang5
                                 Parent = container.Parent,
                                 Text = "Reload",
                                 Width = 70,
-                            }.Click += delegate { Lang5Module.Instance.Settings.ReloadJson(); };
+                            }.Click += delegate { Lang5Module.Instance.Settings.ReloadJson(this, EventArgs.Empty); };
                             break;
                     }
                 }

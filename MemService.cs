@@ -2,7 +2,10 @@
 using Iced.Intel;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +16,7 @@ namespace BhModule.Lang5
     public class MemService
     {
         private readonly Lang5Module module;
+        static readonly string StateJsonPath = Path.Combine(Lang5Module.Instance.DirectoriesManager.GetFullDirectoryPath("lang5"), "state.json");
         private IntPtr CallerAddress;
         private IntPtr TextDataAddress;
         private IntPtr TextConverterAddress;
@@ -24,10 +28,12 @@ namespace BhModule.Lang5
             { "ValidateLanguage(language)",IntPtr.Zero},
             { "ch >= STRING_CHAR_FIRST",IntPtr.Zero}
         };
-        private OverwriteOpcodes TextConverterDetour;
+        OverwriteOpcodes TextConverterDetour;
+        OverwriteOpcodes CallerDetour;
         private bool loaded = false;
         public bool ForceRestoreMem = false;
         public static event EventHandler OnLoaded;
+        CancellationTokenSource _initCts;
         public MemService(Lang5Module module)
         {
             this.module = module;
@@ -36,12 +42,13 @@ namespace BhModule.Lang5
         }
         public void Unload()
         {
-            if (!GameService.GameIntegration.Gw2Instance.Gw2IsRunning || (!module.Settings.RestoreMem.Value && !ForceRestoreMem)) return;
+            Lang5Module.Logger.Debug("Module Unload");
+            _initCts?.Cancel();
+            OnLoaded = null;
+            if (!loaded || !GameService.GameIntegration.Gw2Instance.Gw2IsRunning || (!module.Settings.RestoreMem.Value && !ForceRestoreMem)) return;
             SetZhUI(false);
-            foreach (var item in OverwriteOpcodes.All)
-            {
-                item.Undo();
-            }
+            TextConverterDetour.Undo();
+            CallerDetour.Undo();
             Utils.FreeMemory(TextDataAddress);
             Utils.FreeMemory(CallerAddress);
             Utils.FreeMemory(LangSetterAddress);
@@ -50,6 +57,7 @@ namespace BhModule.Lang5
         public void SetZhUI(bool enable)
         {
             if (!loaded) return;
+            Lang5Module.Logger.Debug($"Chinese Enable: {enable}");
             byte[] lang = enable ? [0x5] : Utils.ReadMemory(OriginLangPtr, 1);
             FuncBuffer funcBuffer = new() { address = LangSetterAddress, arg0 = lang[0] };
             Utils.WriteMemory(CallFuncPtr, funcBuffer.Bytes);
@@ -58,36 +66,56 @@ namespace BhModule.Lang5
         public void SetConvert(bool enable)
         {
             if (!loaded) return;
+            Lang5Module.Logger.Debug($"Chinese Traditional Enable: {enable}");
             if (enable) TextConverterDetour.Write();
             else TextConverterDetour.Undo();
         }
         private void Init()
         {
+            _initCts = new CancellationTokenSource();
             Task.Run(() =>
             {
+                var stopwatch = Stopwatch.StartNew();
+                Lang5Module.Logger.Debug("Finding Address");
                 FindRefs();
-                if (ValidateAddress() > 0) return;
-                GenCaller();
-                GenLangSetter();
-                GenTextData();
-                GenTextConverter();
+                Lang5Module.Logger.Debug($"Finding Address Elapsed Time: {stopwatch.Elapsed.TotalSeconds}s");
+                var key = GameService.GameIntegration.Gw2Instance.Gw2Process.StartTime.Ticks.ToString();
+                var validateResult = ValidateAddress();
+                Lang5Module.Logger.Debug($"Found Address Status: {validateResult}");
+                if (validateResult == ValidateResult.Unexpected) return;
+                else if (validateResult == ValidateResult.Injected)
+                {
+                    TryRestoreState(key);
+                }
+                else
+                {
+                    GenCaller();
+                    GenLangSetter();
+                    GenTextData();
+                    GenTextConverter();
+                    SaveState(key);
+                }
 
+                Lang5Module.Logger.Debug($"Caller Address: {CallerAddress.ToInt64():X}");
+                Lang5Module.Logger.Debug($"Lang Setter Address: {LangSetterAddress.ToInt64():X}");
+                Lang5Module.Logger.Debug($"Cht Data Address: {TextDataAddress.ToInt64():X}");
+                Lang5Module.Logger.Debug($"Cht Coverter Address: {TextConverterAddress.ToInt64():X}");
                 loaded = true;
                 OnLoaded?.Invoke(this, EventArgs.Empty);
-            });
+            }, _initCts.Token);
         }
         private void FindRefs()
         {
             refs = Utils.FindReadonlyStringRefs([.. refs.Keys]);
         }
-        private int ValidateAddress()
+        private ValidateResult ValidateAddress()
         {
             foreach (var item in refs)
             {
                 if (item.Value == IntPtr.Zero)
                 {
                     Utils.Notify.Show($"Unexpected \"{item.Key}\" address.", 6000);
-                    return 1;
+                    return ValidateResult.Unexpected;
                 }
             }
 
@@ -96,11 +124,9 @@ namespace BhModule.Lang5
             List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
             if (opcodes.Count != 0 && opcodes[0].IsJmpNear)
             {
-                Utils.Notify.Show("Please restart game, can not handle codes that injected.", 6000);
-                return 2;
+                return ValidateResult.Injected;
             }
-            ;
-            return 0;
+            return ValidateResult.Valid;
         }
         private void GenCaller()
         {
@@ -108,9 +134,9 @@ namespace BhModule.Lang5
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
 
             CallerAddress = AllocNearMemory(200); // after 100+ func ptr and args
-            OverwriteOpcodes callDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, CallerAddress));
+            CallerDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, CallerAddress));
 
-            IntPtr jmpBackAddress = IntPtr.Add(callDetour.Address, callDetour.BackupBytes.Count);
+            IntPtr jmpBackAddress = IntPtr.Add(CallerDetour.Address, CallerDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
             Assembler c = new(64);
             Label endLabel = c.CreateLabel();
@@ -137,7 +163,7 @@ namespace BhModule.Lang5
             c.pop(rcx);
             c.pop(rbx);
             c.pop(rax);
-            foreach (var item in callDetour.BackupInstructions)
+            foreach (var item in CallerDetour.BackupInstructions)
             {
                 c.AddInstruction(item);
             }
@@ -146,7 +172,7 @@ namespace BhModule.Lang5
             c.Assemble(codeWriter, (ulong)CallerAddress.ToInt64());
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), InjectionCallerAddress);
             Utils.WriteMemory(CallerAddress, [.. codeWriter.data]);
-            callDetour.Write();
+            CallerDetour.Write();
 
         }
         private void GenLangSetter()
@@ -181,7 +207,7 @@ namespace BhModule.Lang5
         }
         private void GenTextConverter()
         {
-            TextConverterAddress = AllocNearMemory(100000);
+            TextConverterAddress = AllocNearMemory(1000000);
 
             IntPtr target = IntPtr.Add(refs["ch >= STRING_CHAR_FIRST"], 0x26);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
@@ -467,7 +493,6 @@ namespace BhModule.Lang5
             IntPtr prepFreeAddr2 = TextConverterAddress;
 
             TextConverterDetour.Undo();
-            OverwriteOpcodes.All.Remove(TextConverterDetour);
             GenTextData();
             GenTextConverter();
             if (module.Settings.Cht.Value) TextConverterDetour.Write();
@@ -481,14 +506,64 @@ namespace BhModule.Lang5
             List<byte> list = [0xe9, .. BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5)))];
             return [.. list];
         }
+        void TryRestoreState(string key)
+        {
+            using var sr = File.OpenText(StateJsonPath);
+            var lastLoaded = JsonSerializer.Deserialize<MemServiceJson>(sr.ReadToEnd());
+            if (lastLoaded.Key != key) return;
+            CallerAddress = lastLoaded.CallerAddress;
+            TextDataAddress = lastLoaded.TextDataAddress;
+            TextConverterAddress = lastLoaded.TextConverterAddress;
+            LangSetterAddress = lastLoaded.LangSetterAddress;
+            TextConverterDetour = new(
+                lastLoaded.TextConverterDetour.Address,
+                [.. lastLoaded.TextConverterDetour.BackupBytes],
+                [.. lastLoaded.TextConverterDetour.OverwriteBytes]
+                );
+            CallerDetour = new(
+                lastLoaded.CallerDetour.Address,
+                [.. lastLoaded.CallerDetour.BackupBytes],
+                [.. lastLoaded.CallerDetour.OverwriteBytes]
+                );
+        }
+        void SaveState(string key)
+        {
+            var lastLoaded = new MemServiceJson()
+            {
+                Key = key,
+                CallerAddress = CallerAddress,
+                TextDataAddress = TextDataAddress,
+                TextConverterAddress = TextConverterAddress,
+                LangSetterAddress = LangSetterAddress,
+                TextConverterDetour = new()
+                {
+                    Address = TextConverterDetour.Address,
+                    BackupBytes = [.. TextConverterDetour.BackupBytes],
+                    OverwriteBytes = [.. TextConverterDetour.OverwriteBytes],
+                },
+                CallerDetour = new()
+                {
+                    Address = CallerDetour.Address,
+                    BackupBytes = [.. CallerDetour.BackupBytes],
+                    OverwriteBytes = [.. CallerDetour.OverwriteBytes],
+                }
+            };
+            var lastLoadedJson = JsonSerializer.Serialize(lastLoaded);
+            File.WriteAllText(StateJsonPath, lastLoadedJson);
+        }
         private IntPtr AllocNearMemory(int size)
         {
+            var stopwatch = Stopwatch.StartNew();
             var mainModule = GameService.GameIntegration.Gw2Instance.Gw2Process.MainModule;
             IntPtr tryAddr = IntPtr.Add(mainModule.BaseAddress, int.MinValue + mainModule.ModuleMemorySize);
             while (tryAddr.ToInt64() < mainModule.BaseAddress.ToInt64())
             {
                 IntPtr result = Utils.AllocMemory(size, tryAddr);
-                if (result != IntPtr.Zero) return result;
+                if (result != IntPtr.Zero)
+                {
+                    Lang5Module.Logger.Debug($"Allocate Near Memory Elapsed Time: {stopwatch.Elapsed.TotalSeconds}s , Size: {size} bytes");
+                    return result;
+                }
                 tryAddr = IntPtr.Add(tryAddr, size);
             }
             return IntPtr.Zero;
@@ -653,5 +728,43 @@ namespace BhModule.Lang5
                 Bytes = [.. mapBytes, .. dataBytes];
             }
         }
+    }
+    public class MemServiceJson
+    {
+        public string Key { get; set; }
+        [JsonConverter(typeof(IntPtrConverter))]
+        public IntPtr CallerAddress { get; set; }
+        [JsonConverter(typeof(IntPtrConverter))]
+        public IntPtr TextDataAddress { get; set; }
+        [JsonConverter(typeof(IntPtrConverter))]
+        public IntPtr TextConverterAddress { get; set; }
+        [JsonConverter(typeof(IntPtrConverter))]
+        public IntPtr LangSetterAddress { get; set; }
+        public DetourJson TextConverterDetour { get; set; }
+        public DetourJson CallerDetour { get; set; }
+    }
+    public class IntPtrConverter() : JsonConverter<IntPtr>
+    {
+        public override IntPtr Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(reader.GetInt64());
+        }
+        public override void Write(Utf8JsonWriter writer, IntPtr value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(value.ToInt64());
+        }
+    }
+    public class DetourJson()
+    {
+        [JsonConverter(typeof(IntPtrConverter))]
+        public IntPtr Address { get; set; }
+        public List<byte> BackupBytes { get; set; }
+        public List<byte> OverwriteBytes { get; set; }
+    }
+    public enum ValidateResult
+    {
+        Valid,
+        Unexpected,
+        Injected
     }
 }

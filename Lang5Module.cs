@@ -14,7 +14,7 @@ namespace BhModule.Lang5
     [Export(typeof(Blish_HUD.Modules.Module))]
     public class Lang5Module : Blish_HUD.Modules.Module
     {
-        private static readonly Logger Logger = Logger.GetLogger<Lang5Module>();
+        public static readonly Logger Logger = Logger.GetLogger<Lang5Module>();
         #region Service Managers
         internal SettingsManager SettingsManager => this.ModuleParameters.SettingsManager;
         internal ContentsManager ContentsManager => this.ModuleParameters.ContentsManager;

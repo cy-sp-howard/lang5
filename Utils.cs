@@ -291,7 +291,6 @@ namespace BhModule.Lang5
     }
     public class OverwriteOpcodes
     {
-        public static List<OverwriteOpcodes> All = new();
         public readonly IReadOnlyList<byte> BackupBytes;
         public readonly IReadOnlyList<byte> OverwriteBytes;
         public readonly IReadOnlyList<Instruction> BackupInstructions;
@@ -319,7 +318,6 @@ namespace BhModule.Lang5
             this.BackupBytes = backupOpcodes;
             this.OverwriteBytes = overwriteOpcodes;
             this.BackupInstructions = backupInstructions;
-            All.Add(this);
         }
         public void Write()
         {
