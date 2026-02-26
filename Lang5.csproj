@@ -76,7 +76,6 @@
     <Compile Include="Utils.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="app.config" />
     <None Include="manifest.json" />
     <None Include="ref\jianfan.json" />
     <None Include="ref\add.json" />
@@ -91,9 +90,6 @@
     <PackageReference Include="SemanticVersioning">
       <Version>1.2.2</Version>
     </PackageReference>
-  </ItemGroup>
-  <ItemGroup>
-    <WCFMetadata Include="Connected Services\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

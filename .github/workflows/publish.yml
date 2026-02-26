@@ -15,9 +15,9 @@ jobs:
     - name: Setup msbuild
       uses: microsoft/setup-msbuild@v2
     - name: Restore dependencies
-      run: msbuild /t:Restore
+      run: msbuild -t:Restore -p:Configuration=Release 
     - name: Build
-      run: msbuild Lang5.csproj
+      run: msbuild Lang5.csproj -p:Configuration=Release 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v4
       with:
