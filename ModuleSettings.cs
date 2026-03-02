@@ -79,6 +79,7 @@ namespace BhModule.Lang5
             ChineseUI.SettingChanged -= ApplyLang;
             Cht.SettingChanged -= ApplyChtCoverter;
             ChtJson.SettingChanged -= ReloadJson;
+            Lang5SettingsView.DisposeRootflowPanel?.Invoke();
         }
         private SettingValidationResult ValidateJson(string path)
         {
@@ -100,10 +101,12 @@ namespace BhModule.Lang5
     {
         static Padding messagePadding;
         static UpdateButton updateButton;
+        static public Action DisposeRootflowPanel;
         FlowPanel rootflowPanel;
         readonly SettingCollection settings = settings;
         protected override void Build(Container buildPanel)
         {
+            DisposeRootflowPanel?.Invoke();
             rootflowPanel = new FlowPanel()
             {
                 Size = buildPanel.Size,
@@ -114,6 +117,11 @@ namespace BhModule.Lang5
                 HeightSizingMode = SizingMode.Standard,
                 AutoSizePadding = new Point(0, 15),
                 Parent = buildPanel
+            };
+            DisposeRootflowPanel = () =>
+            {
+                DisposeRootflowPanel = null;
+                rootflowPanel.Dispose();
             };
             messagePadding = new Padding() { Parent = rootflowPanel };
             updateButton = new UpdateButton(rootflowPanel);
