@@ -244,20 +244,20 @@ namespace BhModule.Lang5
             Label nextItem = c.CreateLabel();
 
 
-            // rax text first addr; rcx current index; rsi current char;[r14+14] current len
+            // rax text first addr; rcx current index (after change [r14+14],auto adjust value in next loop); rsi current char;[r14+14] current len
             Label end = c.CreateLabel();
             Label back = c.CreateLabel();
 
             c.push(rax);
             c.push(rcx);
             c.test(rcx, rcx);
-            c.jne(c.@F);
-            c.mov(__dword_ptr[originLength], 0x0);
+            c.jne(c.@F); // current index is not 0 jmp to AnonymousLabel
+            c.mov(__dword_ptr[originLength], 0x0); // set orign length 0 
             c.AnonymousLabel();
             c.lea(rax, __qword_ptr[originText]);
             c.mov(ecx, __dword_ptr[originLength]);
-            c.mov(__qword_ptr[rax + rcx * 0x2], si); // backup text
-            c.inc(__dword_ptr[originLength]); // backup length
+            c.mov(__qword_ptr[rax + rcx * 0x2], si); // backup text, set originText 
+            c.inc(__dword_ptr[originLength]); // backup length, set originLength current index
             c.pop(rcx);
             c.pop(rax);
 
@@ -271,15 +271,15 @@ namespace BhModule.Lang5
             c.push(rdx);
             c.push(r8);
             c.mov(rbx, TextDataAddress.ToInt64());
-            c.sub(rsi, TextJson.cjkStart);
-            c.lea(r8, __qword_ptr[rbx + rsi * 0x4]); // map address
-            c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 lastText
-            c.mov(eax, __qword_ptr[r8]);
+            c.sub(rsi, TextJson.cjkStart); // TextDataAddress[0] is cjkStart, si is current text index in the TextDataAddress 
+            c.lea(r8, __qword_ptr[rbx + rsi * 0x4]); // map address(offset),rbx is TextDataAddress, rsi is current text index in the TextDataAddress 
+            c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 current lastText
+            c.mov(eax, __qword_ptr[r8]); // load map address(offset)
             c.test(eax, eax); // no category
             c.je(end);
-            c.lea(r8, __qword_ptr[rbx + rax]); // arg2 category address
-            c.lea(rdx, __qword_ptr[r14 + TextConverterDetour.BackupInstructions[1].MemoryDisplacement32]); // arg1 targetLenPtr
-            c.call(replaceTextFromCategory); // replaceTextFromCategory(targetLastAddress,targetLenPtr,category)
+            c.lea(r8, __qword_ptr[rbx + rax]); // arg2 category address,r8 conversion data address
+            c.lea(rdx, __qword_ptr[r14 + TextConverterDetour.BackupInstructions[1].MemoryDisplacement32]); // arg1 targetLenPtr, current text len
+            c.call(replaceTextFromCategory); // replaceTextFromCategory(targetCurrentTextAddress,targetCurrentLenPtr,category) , change [rdx] and [rcx]
             c.Label(ref end);
             c.pop(r8);
             c.pop(rdx);
@@ -293,7 +293,7 @@ namespace BhModule.Lang5
             c.int3();
 
 
-            // replaceTextFromCategory(targetLastAddress,targetLenPtr,category)
+            // replaceTextFromCategory(targetCurrentTextAddress, targetCurrentLenPtr, categoryAddress)
             Label replaceTextFromCategoryLoopStart = c.CreateLabel();
             Label replaceTextFromCategoryEnd = c.CreateLabel();
 
@@ -308,31 +308,31 @@ namespace BhModule.Lang5
             c.push(r9);
             c.mov(r9, rcx); // targetLastAddress
             c.mov(esi, __qword_ptr[r8]); // category list len
-            c.lea(rdi, __qword_ptr[r8 + 0x4]); // Item[0]
+            c.lea(rdi, __qword_ptr[r8 + 0x4]); // Item[0] pointer
             c.Label(ref replaceTextFromCategoryLoopStart);
             c.test(esi, esi);
             c.je(replaceTextFromCategoryEnd);
             c.dec(esi); // list remain;
             c.mov(ebx, __qword_ptr[rdi]); // item[n].in len
-            c.cmp(__qword_ptr[originLength], ebx);
+            c.cmp(__qword_ptr[originLength], ebx); // check current len and conversion input len
             c.mov(rcx, rdi);
-            c.call(nextItem); // nextItem(item[n])
+            c.call(nextItem); // nextItem(item[n]), return rax item[n+1] pointer
             c.mov(rdi, rax);
-            c.jb(replaceTextFromCategoryLoopStart); // current item target len < in.length
-            c.call(match); // match(item[n])
+            c.jb(replaceTextFromCategoryLoopStart); // if current item target len < in.length search next item
+            c.call(match); // match(item[n]),return 0|1
             c.test(rax, rax);
-            c.je(replaceTextFromCategoryLoopStart);
-            c.mov(r8, rcx); // inLenAddress (item[n])
+            c.je(replaceTextFromCategoryLoopStart); // not match, find next
+            c.mov(r8, rcx); // rcx inLenAddress (item[n])
             c.mov(rbx, rdx); // backup arg1
-            c.mov(edx, __qword_ptr[r8]);
+            c.mov(edx, __qword_ptr[r8]); // load found item len
             c.dec(edx);
             c.mov(rax, 0x2);
-            c.mul(edx);
+            c.mul(edx); // item last index * 2 = item input len
             c.mov(edx, eax);
-            c.sub(r9, rax);
+            c.sub(r9, rax); // targetCurrentTextAddress - item input len = start replace addr
             c.mov(rcx, r9);
-            c.mov(rdx, rbx);
-            c.call(replace); // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress)
+            c.mov(rdx, rbx); // targetCurrentLenPtr
+            c.call(replace); // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress), edit inside value in targetOverwriteStartAddress and targetLenPtr
             c.Label(ref replaceTextFromCategoryEnd);
             c.pop(r9);
             c.pop(r8);
@@ -347,7 +347,7 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            // nextItem(item[n])
+            // nextItem(item[n]), return item[n+1] pointer
             c.Label(ref nextItem);
             c.push(rcx);
             c.mov(eax, __qword_ptr[rcx]); // in len
@@ -364,7 +364,7 @@ namespace BhModule.Lang5
             c.int3();
 
 
-            // match(inTextLenAddress)
+            // match(inTextLenAddress), return 0|1
             c.Label(ref match);
             c.push(rcx);
             c.push(rdx);
@@ -373,13 +373,13 @@ namespace BhModule.Lang5
             c.mov(r8d, edx);
             c.dec(edx); // in text last index;
             c.mov(rax, 0x2);
-            c.mul(edx);
-            c.mov(edx, eax);
+            c.mul(edx); // eax * edx = dx:ax 
+            c.mov(edx, eax); // eax = text last index * 2 => edx = in text total bytes[] len
             c.lea(rcx, __qword_ptr[rcx + 0x4]); // in text address
-            c.call(getBackupLastTextAddress); // get backup origin text last address
-            c.sub(rax, rdx);
+            c.call(getBackupLastTextAddress); // get origin text last text address
+            c.sub(rax, rdx); // origin last text addr - input text total bytes[].len, fix address for compare
             c.mov(rdx, rax);
-            c.call(isEqual);
+            c.call(isEqual); // isEqual(in text address, originAdress, in text len), return 0|1
             c.pop(r8);
             c.pop(rdx);
             c.pop(rcx);
@@ -389,7 +389,7 @@ namespace BhModule.Lang5
             c.int3();
 
 
-            // isEqual(address1,addres2,size)
+            // isEqual(address1,addres2,size), return 0|1
             Label isEqualLoopStart = c.CreateLabel();
             Label isEqualTrue = c.CreateLabel();
             Label isEqualEnd = c.CreateLabel();
@@ -426,7 +426,7 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress)
+            // replace(targetOverwriteStartAddress, targetLenPtr, inLenAddress) , edit inside value in targetOverwriteStartAddress and targetLenPtr
             Label replaceLoopStart = c.CreateLabel();
             Label replaceLoopEnd = c.CreateLabel();
             c.Label(ref replace);
@@ -434,22 +434,22 @@ namespace BhModule.Lang5
             c.push(rcx);
             c.push(rdx);
             c.push(r8);
-            c.mov(eax, __qword_ptr[r8]);
-            c.sub(__qword_ptr[rdx], eax);
+            c.mov(eax, __qword_ptr[r8]); // load coversion input len
+            c.sub(__qword_ptr[rdx], eax); // targetLenPtr = targetLen - coversion input len 
             c.lea(r8, __qword_ptr[r8 + 0x4]); // in text address
             c.lea(r8, __qword_ptr[r8 + rax * 0x2]); // out len address
-            c.mov(eax, __qword_ptr[r8]); // out len
-            c.add(__qword_ptr[rdx], eax); // fix target last Index by "out.len - in.len"
+            c.mov(eax, __qword_ptr[r8]); // load out len
+            c.add(__qword_ptr[rdx], eax); // fix target last Index, targetLenPtr = targetLen - coversion input len + coversion output len
             c.lea(r8, __qword_ptr[r8 + 0x4]); // out text start
             c.xor(rdx, rdx);
             c.Label(ref replaceLoopStart);
             c.mov(dx, __qword_ptr[r8]);
-            c.mov(__qword_ptr[rcx], dx); // overwrite
+            c.mov(__qword_ptr[rcx], dx); // overwrite target
             c.dec(eax); // remain copy
             c.test(eax, eax);
             c.je(replaceLoopEnd);
-            c.lea(rcx, __qword_ptr[rcx + 0x2]);
-            c.lea(r8, __qword_ptr[r8 + 0x2]);
+            c.lea(rcx, __qword_ptr[rcx + 0x2]); // next overwrite target
+            c.lea(r8, __qword_ptr[r8 + 0x2]); // text output text
             c.jmp(replaceLoopStart);
             c.Label(ref replaceLoopEnd);
             c.pop(r8);
@@ -461,7 +461,7 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            // getBackupLastTextAddress()
+            // getBackupLastTextAddress(), return origin last text address
             c.Label(ref getBackupLastTextAddress);
             c.push(rbx);
             c.lea(rax, __qword_ptr[originText]);
