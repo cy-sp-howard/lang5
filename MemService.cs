@@ -26,7 +26,7 @@ namespace BhModule.Lang5
         private Dictionary<string, IntPtr> refs = new() {
             { "ViewAdvanceText" ,IntPtr.Zero},
             { "ValidateLanguage(language)",IntPtr.Zero},
-            { "ch >= STRING_CHAR_FIRST",IntPtr.Zero}
+            { "CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()",IntPtr.Zero}
         };
         OverwriteOpcodes TextConverterDetour;
         OverwriteOpcodes CallerDetour;
@@ -209,12 +209,12 @@ namespace BhModule.Lang5
         {
             TextConverterAddress = AllocNearMemory(1000000);
 
-            IntPtr target = IntPtr.Add(refs["ch >= STRING_CHAR_FIRST"], 0x26);
+            IntPtr target = IntPtr.Add(refs["CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()"], 0xAA);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
             TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress));
             IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
 
-            byte[] expectedBytes = [0x66, 0x89, 0x34, 0x48, 0x41, 0xff, 0x46];
+            byte[] expectedBytes = [0x48, 0x8B, 0xE8];
             for (int i = 0; i < expectedBytes.Length; i++)
             {
                 if (TextConverterDetour.BackupBytes[i] != expectedBytes[i])
@@ -227,14 +227,8 @@ namespace BhModule.Lang5
             ListCodeWriter codeWriter = new();
             Assembler c = new(64);
 
-            //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
-            foreach (var item in TextConverterDetour.BackupInstructions)
-            {
-                c.AddInstruction(item);
-            }
-
-            Label originLength = c.CreateLabel();
-            Label originText = c.CreateLabel();
+            Label handledStringLenPtr = c.CreateLabel();
+            Label handledStringPtr = c.CreateLabel();
             // func
             Label replaceTextFromCategory = c.CreateLabel();
             Label match = c.CreateLabel();
@@ -242,58 +236,80 @@ namespace BhModule.Lang5
             Label isEqual = c.CreateLabel();
             Label getBackupLastTextAddress = c.CreateLabel();
             Label nextItem = c.CreateLabel();
+            Label copyString = c.CreateLabel();
 
 
-            // rax text first addr; rcx current index (after change [r14+14],auto adjust value in next loop); rsi current char;[r14+14] current len
-            Label end = c.CreateLabel();
-            Label back = c.CreateLabel();
-
-            c.push(rax);
-            c.push(rcx);
-            c.test(rcx, rcx);
-            c.jne(c.@F); // current index is not 0 jmp to AnonymousLabel
-            c.mov(__dword_ptr[originLength], 0x0); // set orign length 0 
-            c.AnonymousLabel();
-            c.lea(rax, __qword_ptr[originText]);
-            c.mov(ecx, __dword_ptr[originLength]);
-            c.mov(__qword_ptr[rax + rcx * 0x2], si); // backup text, set originText 
-            c.inc(__dword_ptr[originLength]); // backup length, set originLength current index
-            c.pop(rcx);
-            c.pop(rax);
-
-            c.cmp(si, TextJson.cjkStart);
-            c.jb(back);
-            c.cmp(si, TextJson.cjkEnd);
-            c.ja(back);
-            c.push(rax);
-            c.push(rbx);
+            // [rax] string, rcx text len, rdx text len + 1
+            Label eachTextStart = c.CreateLabel();
+            Label eachTextContinue = c.CreateLabel();
+            Label eachTextBreak = c.CreateLabel();
             c.push(rcx);
             c.push(rdx);
+            c.push(rsi);
+            c.push(rdi);
             c.push(r8);
-            c.mov(rbx, TextDataAddress.ToInt64());
-            c.sub(rsi, TextJson.cjkStart); // TextDataAddress[0] is cjkStart, si is current text index in the TextDataAddress 
-            c.lea(r8, __qword_ptr[rbx + rsi * 0x4]); // map address(offset),rbx is TextDataAddress, rsi is current text index in the TextDataAddress 
-            c.lea(rcx, __qword_ptr[rax + rcx * 0x2]); // arg0 current lastText
-            c.mov(eax, __qword_ptr[r8]); // load map address(offset)
-            c.test(eax, eax); // no category
-            c.je(end);
-            c.lea(r8, __qword_ptr[rbx + rax]); // arg2 category address,r8 conversion data address
-            c.lea(rdx, __qword_ptr[r14 + TextConverterDetour.BackupInstructions[1].MemoryDisplacement32]); // arg1 targetLenPtr, current text len
-            c.call(replaceTextFromCategory); // replaceTextFromCategory(targetCurrentTextAddress,targetCurrentLenPtr,category) , change [rdx] and [rcx]
-            c.Label(ref end);
+            c.push(r10);
+            c.push(r11);
+            c.push(r12);
+            c.xor(rdi, rdi);
+            c.xor(rsi, rsi);
+            c.xor(r8, r8);
+            c.mov(__qword_ptr[handledStringLenPtr], edi);
+            c.lea(r10, __qword_ptr[handledStringPtr]);
+
+            c.Label(ref eachTextStart);
+            c.mov(si, __qword_ptr[rax + rdi * 0x2]); // load handling char, si handlingChar ,rdi handlingCharIndex, rax stringAddress
+            c.mov(ecx, __qword_ptr[handledStringLenPtr]); // load handledIndex
+            c.lea(rcx, __qword_ptr[r10 + rcx * 0x2]); // rcx handledCharPtr
+            c.mov(__qword_ptr[rcx], si); // save in handledStringPtr
+            c.inc(__dword_ptr[handledStringLenPtr]); // handledStringLen + 1
+            c.mov(r11, TextDataAddress.ToInt64()); // coversion data
+            c.test(si, si); // if end ,break
+            c.je(eachTextBreak);
+            c.cmp(si, TextJson.cjkStart);
+            c.jb(eachTextContinue);
+            c.cmp(si, TextJson.cjkEnd);
+            c.ja(eachTextContinue);
+            // si current text, rdi current index
+            c.sub(rsi, TextJson.cjkStart); // TextDataAddress[0] is cjkStart, textDataCategoryXIndex = si - TextJson.cjkStart
+            c.lea(r12, __qword_ptr[r11 + rsi * 0x4]); // currentCategoryOffsetAddress =  TextDataAddress + textDataCategoryXIndex * 4
+            c.mov(r12d, __qword_ptr[r12]); // load currentCategoryOffsetAddress
+            c.test(r12d, r12d); // currentCategoryOffsetAddress no data
+            c.je(eachTextContinue);
+            c.lea(rdx, __dword_ptr[handledStringLenPtr]); // set arg1 to handledStringLenPtr,
+            c.lea(r8, __qword_ptr[r11 + r12]); // set arg2 to categoryPtr, arg0 is handledCharPtr
+            c.call(replaceTextFromCategory); // replaceTextFromCategory(handledCharPtr, handledStringLenPtr , categoryPtr) , change [rcx] and [rdx]
+
+            c.Label(ref eachTextContinue);
+            c.inc(rdi);
+            c.jmp(eachTextStart);
+            c.Label(ref eachTextBreak);
+            c.test(r8, r8); // if not call replaceTextFromCategory, dont copy string
+            c.je(c.@F);
+            c.mov(rcx, rax); // set arg0 = stringAddress 
+            c.mov(rdx, r10); // set arg1 = handledStringPtr 
+            c.call(copyString); // copyString(destPtr,sourcePtr)
+            c.AnonymousLabel();
+            c.pop(r12);
+            c.pop(r11);
+            c.pop(r10);
             c.pop(r8);
+            c.pop(rdi);
+            c.pop(rsi);
             c.pop(rdx);
             c.pop(rcx);
-            c.pop(rbx);
-            c.pop(rax);
-            c.Label(ref back);
+            //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
+            foreach (var item in TextConverterDetour.BackupInstructions)
+            {
+                c.AddInstruction(item);
+            }
             c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
             c.int3();
             c.int3();
             c.int3();
 
 
-            // replaceTextFromCategory(targetCurrentTextAddress, targetCurrentLenPtr, categoryAddress)
+            // replaceTextFromCategory(targetCurrentTextAddress, targetCurrentLenPtr, categoryPtr) , change [rdx] and [rcx]
             Label replaceTextFromCategoryLoopStart = c.CreateLabel();
             Label replaceTextFromCategoryEnd = c.CreateLabel();
 
@@ -314,7 +330,7 @@ namespace BhModule.Lang5
             c.je(replaceTextFromCategoryEnd);
             c.dec(esi); // list remain;
             c.mov(ebx, __qword_ptr[rdi]); // item[n].in len
-            c.cmp(__qword_ptr[originLength], ebx); // check current len and conversion input len
+            c.cmp(__qword_ptr[handledStringLenPtr], ebx); // check current len and conversion input len
             c.mov(rcx, rdi);
             c.call(nextItem); // nextItem(item[n]), return rax item[n+1] pointer
             c.mov(rdi, rax);
@@ -464,8 +480,8 @@ namespace BhModule.Lang5
             // getBackupLastTextAddress(), return origin last text address
             c.Label(ref getBackupLastTextAddress);
             c.push(rbx);
-            c.lea(rax, __qword_ptr[originText]);
-            c.mov(ebx, __qword_ptr[originLength]);
+            c.lea(rax, __qword_ptr[handledStringPtr]);
+            c.mov(ebx, __qword_ptr[handledStringLenPtr]);
             c.dec(ebx); // len to last index
             c.lea(rax, rax + rbx * 0x2);
             c.pop(rbx);
@@ -474,12 +490,31 @@ namespace BhModule.Lang5
             c.int3();
             c.int3();
 
-            c.Label(ref originLength);
+            // copyString(destPtr,sourcePtr)
+            c.Label(ref copyString);
+            c.push(rdi);
+            c.push(rsi);
+            c.xor(rdi, rdi);
+            c.AnonymousLabel();
+            c.mov(si, __qword_ptr[rdx + rdi * 0x2]);
+            c.mov(__qword_ptr[rcx + rdi * 0x2], si);
+            c.inc(edi);
+            c.test(si, si);
+            c.jne(c.@B);
+            c.pop(rsi);
+            c.pop(rdi);
+            c.ret();
+            c.int3();
+            c.int3();
+            c.int3();
+
+
+            c.Label(ref handledStringLenPtr);
             c.nop();
             c.nop();
             c.nop();
             c.nop();
-            c.Label(ref originText);
+            c.Label(ref handledStringPtr);
             c.nop();
 
             c.Assemble(codeWriter, (ulong)TextConverterAddress.ToInt64());
