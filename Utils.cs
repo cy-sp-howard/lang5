@@ -1,18 +1,18 @@
 ﻿using Blish_HUD;
 using Blish_HUD.Controls;
+using Blish_HUD.Modules;
+using Blish_HUD.Modules.Pkgs;
+using Iced.Intel;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
-using System.Runtime.InteropServices;
-using System.Text;
-using Iced.Intel;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
-using Blish_HUD.Modules.Pkgs;
-using Blish_HUD.Modules;
 using System.Text.Json.Serialization;
 
 namespace BhModule.Lang5
@@ -192,8 +192,7 @@ namespace BhModule.Lang5
                             foundCount++;
                             result[i] = IntPtr.Add(pageStartAddr, foundIndex ?? 0);
                         }
-                    };
-
+                    }
                 }
                 if (foundCount == result.Length) break;
                 currentPage += 1;
@@ -220,8 +219,7 @@ namespace BhModule.Lang5
                         _i = i + 3 + 3; // i - 3   min -6
                     }
                     if (source[_i - 1] == 0x0d && source[_i - 2] == 0x8d && source[_i - 3] == 0x48) return i;
-
-                };
+                }
             }
             return null;
         }
@@ -295,7 +293,11 @@ namespace BhModule.Lang5
         public readonly IReadOnlyList<byte> OverwriteBytes;
         public readonly IReadOnlyList<Instruction> BackupInstructions;
         public readonly IntPtr Address;
-        public OverwriteOpcodes(IntPtr address, byte[] originBytes, byte[] overwriteBytes)
+        public readonly bool Valid;
+        public OverwriteOpcodes(IntPtr address, byte[] originBytes, byte[] overwriteBytes) : this(address, originBytes, overwriteBytes, [])
+        {
+        }
+        public OverwriteOpcodes(IntPtr address, byte[] originBytes, byte[] overwriteBytes, byte[] expectedOriginBytes)
         {
             List<byte> backupOpcodes = new();
             List<byte> overwriteOpcodes = overwriteBytes.ToList();
@@ -318,16 +320,30 @@ namespace BhModule.Lang5
             this.BackupBytes = backupOpcodes;
             this.OverwriteBytes = overwriteOpcodes;
             this.BackupInstructions = backupInstructions;
+            Valid = Validate(expectedOriginBytes);
         }
         public void Write()
         {
+            if (!Valid) return;
             Utils.WriteMemory(Address, OverwriteBytes.ToArray());
         }
         public void Undo()
         {
             Utils.WriteMemory(Address, BackupBytes.ToArray());
         }
-
+        bool Validate(byte[] expected)
+        {
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (BackupBytes[i] != expected[i])
+                {
+                    var expectedBytesStr = string.Join(", ", expected.Select(i => $"0x{i:X}"));
+                    Utils.Notify.Show($"Unexpected opcodes {expectedBytesStr}", 6000);
+                    return false;
+                }
+            }
+            return true;
+        }
     }
     public class ListCodeWriter : CodeWriter
     {

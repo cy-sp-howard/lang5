@@ -29,6 +29,7 @@ namespace BhModule.Lang5
             { "CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()",IntPtr.Zero}
         };
         OverwriteOpcodes TextConverterDetour;
+        readonly byte[] TextConverterOriginBytes = [0x48, 0x8B, 0xE8];
         OverwriteOpcodes CallerDetour;
         private bool loaded = false;
         public bool ForceRestoreMem = false;
@@ -211,18 +212,8 @@ namespace BhModule.Lang5
 
             IntPtr target = IntPtr.Add(refs["CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()"], 0xAA);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
-            TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress));
+            TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress), TextConverterOriginBytes);
             IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
-
-            byte[] expectedBytes = [0x48, 0x8B, 0xE8];
-            for (int i = 0; i < expectedBytes.Length; i++)
-            {
-                if (TextConverterDetour.BackupBytes[i] != expectedBytes[i])
-                {
-                    Utils.Notify.Show("Unexpected opcodes; can not generate Chinese coverter.", 6000);
-                    return;
-                }
-            }
 
             ListCodeWriter codeWriter = new();
             Assembler c = new(64);
@@ -553,7 +544,8 @@ namespace BhModule.Lang5
             TextConverterDetour = new(
                 lastLoaded.TextConverterDetour.Address,
                 [.. lastLoaded.TextConverterDetour.BackupBytes],
-                [.. lastLoaded.TextConverterDetour.OverwriteBytes]
+                [.. lastLoaded.TextConverterDetour.OverwriteBytes],
+                TextConverterOriginBytes
                 );
             CallerDetour = new(
                 lastLoaded.CallerDetour.Address,
