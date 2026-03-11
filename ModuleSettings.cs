@@ -15,7 +15,7 @@ namespace BhModule.Lang5
 {
     public class ModuleSettings
     {
-        private readonly Lang5Module module;
+        readonly Lang5Module _module;
         public SettingEntry<bool> AutoUpdate { get; private set; }
         public SettingEntry<KeyBinding> ChineseUIKey { get; private set; }
         public SettingEntry<bool> ChineseUI { get; private set; }
@@ -25,63 +25,63 @@ namespace BhModule.Lang5
         public SettingEntry<bool> RestoreMem { get; private set; }
         public ModuleSettings(Lang5Module module, SettingCollection settings)
         {
-            this.module = module;
+            _module = module;
             InitUISetting(settings);
         }
-        private void InitUISetting(SettingCollection settings)
+        void InitUISetting(SettingCollection settings)
         {
-            this.ChineseUI = settings.DefineSetting(nameof(this.ChineseUI), true, () => "Use Chinese UI", () => "");
-            this.ChineseUI.SettingChanged += ApplyLang;
-            this.ChineseUIKey = settings.DefineSetting(nameof(this.ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
-            this.ChineseUIKey.Value.Enabled = true;
-            this.ChineseUIKey.Value.Activated += ToggleLang;
-            MemService.OnLoaded += delegate { module.MemService.SetZhUI(ChineseUI.Value); };
+            ChineseUI = settings.DefineSetting(nameof(ChineseUI), true, () => "Use Chinese UI", () => "");
+            ChineseUI.SettingChanged += ApplyLang;
+            ChineseUIKey = settings.DefineSetting(nameof(ChineseUIKey), new KeyBinding(Keys.P), () => "Toggle Chinese UI", () => "");
+            ChineseUIKey.Value.Enabled = true;
+            ChineseUIKey.Value.Activated += ToggleLang;
+            MemService.OnLoaded += delegate { _module.MemService?.SetZhUI(ChineseUI.Value); };
 
-            this.Cht = settings.DefineSetting(nameof(this.Cht), true, () => "Simplified Chinese to Traditional Chinese", () => "Work when Chinese UI enable.");
-            this.Cht.SettingChanged += ApplyChtCoverter;
-            this.ChtJson = settings.DefineSetting(nameof(this.ChtJson), "", () => "Source", () => "Additional conversion source json path; ENG PATH ONLY; \r\njson format: \r\n[{ \"i\" : \"ZHS\",\r\n  \"o\" : \"ZHT\" }]");
-            this.ChtJson.SettingChanged += ReloadJson;
-            this.ChtJson.SetValidation(ValidateJson);
-            this.ChtKey = settings.DefineSetting(nameof(this.ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
-            this.ChtKey.Value.Enabled = true;
-            this.ChtKey.Value.Activated += ToggleChinese;
-            MemService.OnLoaded += delegate { module.MemService.SetConvert(Cht.Value); };
+            Cht = settings.DefineSetting(nameof(Cht), true, () => "Simplified Chinese to Traditional Chinese", () => "Work when Chinese UI enable.");
+            Cht.SettingChanged += ApplyChtCoverter;
+            ChtJson = settings.DefineSetting(nameof(ChtJson), "", () => "Additional Source", () => "Additional conversion source json path; ENG PATH ONLY; \r\njson format: \r\n[{ \"i\" : \"ZHS\",\r\n  \"o\" : \"ZHT\" }]");
+            ChtJson.SettingChanged += ReloadJson;
+            ChtJson.SetValidation(ValidateJson);
+            ChtKey = settings.DefineSetting(nameof(ChtKey), new KeyBinding(Keys.OemSemicolon), () => "Toggle Traditional Chinese", () => "");
+            ChtKey.Value.Enabled = true;
+            ChtKey.Value.Activated += ToggleChinese;
+            MemService.OnLoaded += delegate { _module.MemService?.SetConvert(Cht.Value); };
 
-            this.AutoUpdate = settings.DefineSetting(nameof(this.AutoUpdate), false, () => "Auto Update", () => "");
-            this.RestoreMem = settings.DefineSetting(nameof(this.RestoreMem), true, () => "Restore Language Setting, When Blish-HUD Closed.", () => "If unchecked then close Blish-HUD, You'll need restart your game to allow Blish-HUD to recontrolled the language setting");
+            AutoUpdate = settings.DefineSetting(nameof(AutoUpdate), false, () => "Auto Update", () => "");
+            RestoreMem = settings.DefineSetting(nameof(RestoreMem), false, () => "Restore Language Setting, When Blish-HUD Closed.", () => "If unchecked then close Blish-HUD, You'll need restart your game to allow Blish-HUD to recontrolled the language setting");
         }
         public void ReloadJson(object sender, EventArgs args)
         {
-            Lang5SettingsView.SetMsg(module.MemService.ReloadConverter() == 0 ? "" : "Now loading, retry later please.");
+            Lang5SettingsView.SetMsg(_module.MemService?.ReloadConverter() == 0 ? "" : "Now loading, retry later please.");
         }
         void ApplyLang(object sender, EventArgs args)
         {
-            module.MemService.SetZhUI(ChineseUI.Value);
+            _module.MemService?.SetZhUI(ChineseUI.Value);
         }
         void ApplyChtCoverter(object sender, EventArgs args)
         {
-            module.MemService.SetConvert(Cht.Value);
+            _module.MemService?.SetConvert(Cht.Value);
         }
-        private void ToggleChinese(object sender, EventArgs args)
+        void ToggleChinese(object sender, EventArgs args)
         {
             Cht.Value = !Cht.Value;
             Utils.Notify.Show(Cht.Value ? "Enable Simplified Chinese To Traditional Chinese." : "Disable Simplified Chinese To Traditional Chinese.");
         }
-        private void ToggleLang(object sender, EventArgs args)
+        void ToggleLang(object sender, EventArgs args)
         {
             ChineseUI.Value = !ChineseUI.Value;
             Utils.Notify.Show(ChineseUI.Value ? "Enable Chinese UI." : "Disable Chinese UI.");
         }
         public void Unload()
         {
-            this.ChtKey.Value.Activated -= ToggleChinese;
-            this.ChineseUIKey.Value.Activated -= ToggleLang;
+            ChtKey.Value.Activated -= ToggleChinese;
+            ChineseUIKey.Value.Activated -= ToggleLang;
             ChineseUI.SettingChanged -= ApplyLang;
             Cht.SettingChanged -= ApplyChtCoverter;
             ChtJson.SettingChanged -= ReloadJson;
             Lang5SettingsView.DisposeRootflowPanel?.Invoke();
         }
-        private SettingValidationResult ValidateJson(string path)
+        SettingValidationResult ValidateJson(string path)
         {
             Lang5SettingsView.SetMsg("");
             if (path == "") return new(true);
@@ -99,15 +99,15 @@ namespace BhModule.Lang5
     }
     public class Lang5SettingsView(SettingCollection settings) : View
     {
-        static Padding messagePadding;
-        static UpdateButton updateButton;
+        static Padding _messagePadding;
+        static UpdateButton _updateButton;
         static public Action DisposeRootflowPanel;
-        FlowPanel rootflowPanel;
-        readonly SettingCollection settings = settings;
+        FlowPanel _rootflowPanel;
+        readonly SettingCollection _settings = settings;
         protected override void Build(Container buildPanel)
         {
             DisposeRootflowPanel?.Invoke();
-            rootflowPanel = new FlowPanel()
+            _rootflowPanel = new FlowPanel()
             {
                 Size = buildPanel.Size,
                 FlowDirection = ControlFlowDirection.SingleTopToBottom,
@@ -121,35 +121,35 @@ namespace BhModule.Lang5
             DisposeRootflowPanel = () =>
             {
                 DisposeRootflowPanel = null;
-                rootflowPanel.Dispose();
+                _rootflowPanel.Dispose();
             };
-            messagePadding = new Padding() { Parent = rootflowPanel };
-            updateButton = new UpdateButton(rootflowPanel);
+            _messagePadding = new Padding() { Parent = _rootflowPanel };
+            _updateButton = new UpdateButton(_rootflowPanel);
 
-            foreach (var setting in settings.Where(s => s.SessionDefined))
+            foreach (var setting in _settings.Where(s => s.SessionDefined))
             {
                 IView settingView;
 
-                if ((settingView = SettingView.FromType(setting, rootflowPanel.Width)) != null)
+                if ((settingView = SettingView.FromType(setting, _rootflowPanel.Width)) != null)
                 {
                     ViewContainer container = new()
                     {
                         WidthSizingMode = SizingMode.Fill,
                         HeightSizingMode = SizingMode.AutoSize,
-                        Parent = rootflowPanel
+                        Parent = _rootflowPanel
                     };
                     if (settingView is not SettingsView) container.Show(settingView);
                     switch (setting.EntryKey)
                     {
                         case "ChtKey":
                         case "ChineseUIKey":
-                            new Padding() { Parent = rootflowPanel };
+                            new Padding() { Parent = _rootflowPanel };
                             break;
                         case "ChtJson":
                             container.WidthSizingMode = SizingMode.AutoSize;
                             container.Parent = new FlowPanel()
                             {
-                                Parent = rootflowPanel,
+                                Parent = _rootflowPanel,
                                 FlowDirection = ControlFlowDirection.LeftToRight,
                                 WidthSizingMode = SizingMode.Fill,
                                 HeightSizingMode = SizingMode.AutoSize,
@@ -168,22 +168,22 @@ namespace BhModule.Lang5
         }
         public static void SetMsg(string text)
         {
-            if (Lang5SettingsView.messagePadding == null) return;
+            if (_messagePadding == null) return;
             if (text == "" && Lang5Module.UpdateAvailable)
             {
-                Lang5SettingsView.messagePadding.Hide();
-                Lang5SettingsView.updateButton.Show();
+                _messagePadding.Hide();
+                _updateButton.Show();
             }
-            else if (text != "" && !Lang5SettingsView.messagePadding.Visible)
+            else if (text != "" && !_messagePadding.Visible)
             {
-                Lang5SettingsView.messagePadding.Show();
-                Lang5SettingsView.updateButton.Hide();
+                _messagePadding.Show();
+                _updateButton.Hide();
             }
-            Lang5SettingsView.messagePadding.message = text;
+            _messagePadding._message = text;
         }
-        private class Padding : Control
+        class Padding : Control
         {
-            public string message = "";
+            public string _message = "";
             public Padding(int height = 16)
             {
                 Size = new Point(0, height);
@@ -191,19 +191,19 @@ namespace BhModule.Lang5
             protected override void Paint(SpriteBatch spriteBatch, Rectangle bounds)
             {
                 Width = Parent.Width;
-                if (message == "") return;
-                spriteBatch.DrawStringOnCtrl(this, message, GameService.Content.DefaultFont14, new Rectangle(0, 0, Width, Height), Color.Red, false, false, 1, HorizontalAlignment.Center, VerticalAlignment.Middle);
+                if (_message == "") return;
+                spriteBatch.DrawStringOnCtrl(this, _message, GameService.Content.DefaultFont14, new Rectangle(0, 0, Width, Height), Color.Red, false, false, 1, HorizontalAlignment.Center, VerticalAlignment.Middle);
             }
         }
-        private class UpdateButton : Control
+        class UpdateButton : Control
         {
-            readonly private ModuleManager moduleManager = GameService.Module.Modules.FirstOrDefault(m => m.ModuleInstance == Lang5Module.Instance);
-            private readonly StandardButton button = new()
+            readonly StandardButton _button = new()
             {
+                BasicTooltipText = "Blish-HUD will restart immediately",
                 Text = "Update",
                 Width = 70
             };
-            private readonly FlowPanel container = new()
+            readonly FlowPanel _container = new()
             {
                 ShowBorder = false,
                 FlowDirection = ControlFlowDirection.LeftToRight,
@@ -216,28 +216,27 @@ namespace BhModule.Lang5
                 if (Lang5Module.UpdateAvailable)
                 {
                     Show();
-                    messagePadding.Hide();
+                    _messagePadding.Hide();
                 }
-                container.Parent = parent;
-                Parent = container;
-                button.Parent = container;
-                button.Click += delegate { Lang5Module.Instance.UpdateSelf(); };
-
+                _container.Parent = parent;
+                Parent = _container;
+                _button.Parent = _container;
+                _button.Click += delegate { Lang5Module.Instance.UpdateSelf(); };
             }
             protected override void Paint(SpriteBatch spriteBatch, Rectangle bounds)
             {
                 string msg = "New Version Availible !";
                 Width = 14 * msg.Length / 2;
-                Height = button.Height;
+                Height = _button.Height;
                 spriteBatch.DrawStringOnCtrl(this, msg, GameService.Content.DefaultFont14, new Rectangle(0, 0, 0, Height), Color.Red, false, false, 1, HorizontalAlignment.Left, VerticalAlignment.Middle);
             }
             new public void Hide()
             {
-                container.Hide();
+                _container.Hide();
             }
             new public void Show()
             {
-                container.Show();
+                _container.Show();
             }
         }
     }

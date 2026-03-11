@@ -3,6 +3,7 @@ using Blish_HUD.Graphics.UI;
 using Blish_HUD.Modules;
 using Blish_HUD.Modules.Managers;
 using Blish_HUD.Settings;
+using System;
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Net.Http;
@@ -16,10 +17,9 @@ namespace BhModule.Lang5
     {
         public static readonly Logger Logger = Logger.GetLogger<Lang5Module>();
         #region Service Managers
-        internal SettingsManager SettingsManager => this.ModuleParameters.SettingsManager;
-        internal ContentsManager ContentsManager => this.ModuleParameters.ContentsManager;
-        internal DirectoriesManager DirectoriesManager => this.ModuleParameters.DirectoriesManager;
-        internal Gw2ApiManager Gw2ApiManager => this.ModuleParameters.Gw2ApiManager;
+        public SettingsManager SettingsManager => ModuleParameters.SettingsManager;
+        public ContentsManager ContentsManager => ModuleParameters.ContentsManager;
+        public DirectoriesManager DirectoriesManager => ModuleParameters.DirectoriesManager;
         #endregion
         public MemService MemService { get; private set; }
         public ModuleSettings Settings { get; private set; }
@@ -33,23 +33,23 @@ namespace BhModule.Lang5
         {
             Instance = this;
         }
-
         protected override void DefineSettings(SettingCollection settings)
         {
-            this.Settings = new ModuleSettings(this, settings);
+            Settings = new ModuleSettings(this, settings);
         }
         public override IView GetSettingsView()
         {
             return new Lang5SettingsView(SettingsManager.ModuleSettings);
         }
-
         protected override void Initialize()
         {
             InstanceManager = GameService.Module.Modules.FirstOrDefault(m => m.ModuleInstance == this);
-            CheckUpdate().ContinueWith(_ =>
+            CheckUpdate().ContinueWith((task) =>
             {
+                if (task.IsFaulted) Logger.Error($"CheckUpdate error: {string.Join(",", task.Exception)}");
+
                 if (Settings.AutoUpdate.Value && UpdateAvailable) UpdateSelf();
-                else MemService = new MemService(this);
+                else MemService = new(this);
             });
         }
         protected override void Unload()
@@ -61,28 +61,25 @@ namespace BhModule.Lang5
         {
             if (LatestManifest != null) return UpdateAvailable;
             LatestManifest = new(InstanceManager.Manifest);
-            HttpClient client = new();
+            using HttpClient client = new();
+            client.Timeout = TimeSpan.FromSeconds(5);
             client.DefaultRequestHeaders.Add("User-Agent", "BlishHUD/Lang5");
             client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
 
-            try
+            string latestReleaseResp = await client.GetStringAsync("https://api.github.com/repos/cy-sp-howard/lang5/releases/latest");
+            var latestRelease = JsonSerializer.Deserialize<UpdateModule.Release>(latestReleaseResp);
+            SemVer.Version latestVersion = new(latestRelease.Verison);
+            LatestManifest.SetValue("Version", latestVersion);
+            if (UpdateAvailable)
             {
-                string latestReleaseResp = await client.GetStringAsync("https://api.github.com/repos/cy-sp-howard/lang5/releases/latest");
-                var latestRelease = JsonSerializer.Deserialize<UpdateModule.Release>(latestReleaseResp);
-                SemVer.Version latestVersion = new(latestRelease.Verison);
-                LatestManifest.SetValue("Version", latestVersion);
-                if (UpdateAvailable)
+                var file = latestRelease.Files.Find(f => f.Name.Contains(".bhm"));
+                if (file != null)
                 {
-                    var file = latestRelease.Files.Find(f => f.Name.Contains(".bhm"));
-                    if (file != null)
-                    {
-                        LatestManifest.Hash = file.Hash.Substring(7);
-                        LatestManifest.Location = file.Url;
-                    }
+                    LatestManifest.Hash = file.Hash.Substring(7);
+                    LatestManifest.Location = file.Url;
                 }
-                ;
             }
-            catch { }
+
             return UpdateAvailable;
         }
         public void UpdateSelf()
@@ -97,7 +94,5 @@ namespace BhModule.Lang5
                 GameService.Overlay.Restart();
             });
         }
-
     }
-
 }

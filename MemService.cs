@@ -15,29 +15,29 @@ namespace BhModule.Lang5
 {
     public class MemService
     {
-        private readonly Lang5Module module;
+        readonly Lang5Module _module;
         static readonly string StateJsonPath = Path.Combine(Lang5Module.Instance.DirectoriesManager.GetFullDirectoryPath("lang5"), "state.json");
-        private IntPtr CallerAddress;
-        private IntPtr TextDataAddress;
-        private IntPtr TextConverterAddress;
-        private IntPtr LangSetterAddress;
-        private IntPtr CallFuncPtr => IntPtr.Add(CallerAddress, 100);
-        private IntPtr OriginLangPtr;
-        private Dictionary<string, IntPtr> refs = new() {
+        IntPtr _callerAddress;
+        IntPtr _textDataAddress;
+        IntPtr _textConverterAddress;
+        IntPtr _langSetterAddress;
+        IntPtr _originLangPtr;
+        IntPtr CallFuncPtr => IntPtr.Add(_callerAddress, 100);
+        IReadOnlyDictionary<string, IntPtr> _refs = new Dictionary<string, IntPtr>() {
             { "ViewAdvanceText" ,IntPtr.Zero},
             { "ValidateLanguage(language)",IntPtr.Zero},
             { "CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()",IntPtr.Zero}
         };
-        OverwriteOpcodes TextConverterDetour;
-        readonly byte[] TextConverterOriginBytes = [0x48, 0x8B, 0xE8];
-        OverwriteOpcodes CallerDetour;
-        private bool loaded = false;
+        OverwriteOpcodes _textConverterDetour;
+        readonly byte[] _textConverterOriginBytes = [0x48, 0x8B, 0xE8];
+        OverwriteOpcodes _callerDetour;
+        bool _loaded = false;
         public bool ForceRestoreMem = false;
         public static event EventHandler OnLoaded;
         CancellationTokenSource _initCts;
         public MemService(Lang5Module module)
         {
-            this.module = module;
+            _module = module;
             if (GameService.GameIntegration.Gw2Instance.Gw2IsRunning) Init();
             else GameService.GameIntegration.Gw2Instance.Gw2Started += delegate { Init(); };
         }
@@ -45,33 +45,34 @@ namespace BhModule.Lang5
         {
             Lang5Module.Logger.Debug("Module Unload");
             _initCts?.Cancel();
+            _initCts?.Dispose();
             OnLoaded = null;
-            if (!loaded || !GameService.GameIntegration.Gw2Instance.Gw2IsRunning || (!module.Settings.RestoreMem.Value && !ForceRestoreMem)) return;
+            if (!_loaded || !GameService.GameIntegration.Gw2Instance.Gw2IsRunning || (!_module.Settings.RestoreMem.Value && !ForceRestoreMem)) return;
             SetZhUI(false);
-            TextConverterDetour.Undo();
-            CallerDetour.Undo();
-            Utils.FreeMemory(TextDataAddress);
-            Utils.FreeMemory(CallerAddress);
-            Utils.FreeMemory(LangSetterAddress);
-            Utils.FreeMemory(TextConverterAddress);
+            _textConverterDetour.Undo();
+            _callerDetour.Undo();
+            Utils.FreeMemory(_textDataAddress);
+            Utils.FreeMemory(_callerAddress);
+            Utils.FreeMemory(_langSetterAddress);
+            Utils.FreeMemory(_textConverterAddress);
         }
         public void SetZhUI(bool enable)
         {
-            if (!loaded) return;
+            if (!_loaded) return;
             Lang5Module.Logger.Debug($"Chinese Enable: {enable}");
-            byte[] lang = enable ? [0x5] : Utils.ReadMemory(OriginLangPtr, 1);
-            FuncBuffer funcBuffer = new() { address = LangSetterAddress, arg0 = lang[0] };
+            byte[] lang = enable ? [0x5] : Utils.ReadMemory(_originLangPtr, 1);
+            FuncBuffer funcBuffer = new() { Address = _langSetterAddress, Arg0 = lang[0] };
             Utils.WriteMemory(CallFuncPtr, funcBuffer.Bytes);
             Thread.Sleep(100);
         }
         public void SetConvert(bool enable)
         {
-            if (!loaded) return;
+            if (!_loaded) return;
             Lang5Module.Logger.Debug($"Chinese Traditional Enable: {enable}");
-            if (enable) TextConverterDetour.Write();
-            else TextConverterDetour.Undo();
+            if (enable) _textConverterDetour.Write();
+            else _textConverterDetour.Undo();
         }
-        private void Init()
+        void Init()
         {
             _initCts = new CancellationTokenSource();
             Task.Run(() =>
@@ -97,21 +98,21 @@ namespace BhModule.Lang5
                     SaveState(key);
                 }
 
-                Lang5Module.Logger.Debug($"Caller Address: {CallerAddress.ToInt64():X}");
-                Lang5Module.Logger.Debug($"Lang Setter Address: {LangSetterAddress.ToInt64():X}");
-                Lang5Module.Logger.Debug($"Cht Data Address: {TextDataAddress.ToInt64():X}");
-                Lang5Module.Logger.Debug($"Cht Coverter Address: {TextConverterAddress.ToInt64():X}");
-                loaded = true;
+                Lang5Module.Logger.Debug($"Caller Address: {_callerAddress.ToInt64():X}");
+                Lang5Module.Logger.Debug($"Lang Setter Address: {_langSetterAddress.ToInt64():X}");
+                Lang5Module.Logger.Debug($"Cht Data Address: {_textDataAddress.ToInt64():X}");
+                Lang5Module.Logger.Debug($"Cht Coverter Address: {_textConverterAddress.ToInt64():X}");
+                _loaded = true;
                 OnLoaded?.Invoke(this, EventArgs.Empty);
             }, _initCts.Token);
         }
-        private void FindRefs()
+        void FindRefs()
         {
-            refs = Utils.FindReadonlyStringRefs([.. refs.Keys]);
+            _refs = Utils.FindReadonlyStringRefs([.. _refs.Keys]);
         }
-        private ValidateResult ValidateAddress()
+        ValidateResult ValidateAddress()
         {
-            foreach (var item in refs)
+            foreach (var item in _refs)
             {
                 if (item.Value == IntPtr.Zero)
                 {
@@ -120,7 +121,7 @@ namespace BhModule.Lang5
                 }
             }
 
-            IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
+            IntPtr callAddress = IntPtr.Add(_refs["ViewAdvanceText"], -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
             List<Instruction> opcodes = Utils.ParseOpcodes(originCallBytes, callAddress);
             if (opcodes.Count != 0 && opcodes[0].IsJmpNear)
@@ -129,15 +130,15 @@ namespace BhModule.Lang5
             }
             return ValidateResult.Valid;
         }
-        private void GenCaller()
+        void GenCaller()
         {
-            IntPtr callAddress = IntPtr.Add(refs["ViewAdvanceText"], -0x8);
+            IntPtr callAddress = IntPtr.Add(_refs["ViewAdvanceText"], -0x8);
             byte[] originCallBytes = Utils.ReadMemory(callAddress, 100);
 
-            CallerAddress = AllocNearMemory(200); // after 100+ func ptr and args
-            CallerDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, CallerAddress));
+            _callerAddress = AllocNearMemory(200); // after 100+ func ptr and args
+            _callerDetour = new(callAddress, originCallBytes, GenJmpRelAdrressBytes(callAddress, _callerAddress));
 
-            IntPtr jmpBackAddress = IntPtr.Add(CallerDetour.Address, CallerDetour.BackupBytes.Count);
+            IntPtr jmpBackAddress = IntPtr.Add(_callerDetour.Address, _callerDetour.BackupBytes.Count);
             ListCodeWriter codeWriter = new();
             Assembler c = new(64);
             Label endLabel = c.CreateLabel();
@@ -164,24 +165,24 @@ namespace BhModule.Lang5
             c.pop(rcx);
             c.pop(rbx);
             c.pop(rax);
-            foreach (var item in CallerDetour.BackupInstructions)
+            foreach (var item in _callerDetour.BackupInstructions)
             {
                 c.AddInstruction(item);
             }
             c.AddInstruction(Instruction.CreateBranch(Code.Jmp_rel32_64, (ulong)jmpBackAddress.ToInt64()));
 
-            c.Assemble(codeWriter, (ulong)CallerAddress.ToInt64());
+            c.Assemble(codeWriter, (ulong)_callerAddress.ToInt64());
             //Utils.PrintOpcodes(codeWriter.data.ToArray(), InjectionCallerAddress);
-            Utils.WriteMemory(CallerAddress, [.. codeWriter.data]);
-            CallerDetour.Write();
+            Utils.WriteMemory(_callerAddress, [.. codeWriter.Data]);
+            _callerDetour.Write();
 
         }
-        private void GenLangSetter()
+        void GenLangSetter()
         {
-            IntPtr parentBlock = refs["ValidateLanguage(language)"];
-            OriginLangPtr = Utils.FollowAddress(IntPtr.Add(parentBlock, 0xb));
+            IntPtr parentBlock = _refs["ValidateLanguage(language)"];
+            _originLangPtr = Utils.FollowAddress(IntPtr.Add(parentBlock, 0xb));
             IntPtr targetFuncAddress = Utils.FollowAddress(IntPtr.Add(parentBlock, 0x24));
-            LangSetterAddress = AllocNearMemory(100);
+            _langSetterAddress = AllocNearMemory(100);
 
             ListCodeWriter codeWriter = new();
             Assembler c = new(64);
@@ -195,25 +196,25 @@ namespace BhModule.Lang5
             c.pop(rsp);
             c.pop(rbx);
             c.ret();
-            c.Assemble(codeWriter, (ulong)LangSetterAddress.ToInt64());
+            c.Assemble(codeWriter, (ulong)_langSetterAddress.ToInt64());
 
-            Utils.WriteMemory(LangSetterAddress, [.. codeWriter.data]);
+            Utils.WriteMemory(_langSetterAddress, [.. codeWriter.Data]);
         }
-        private void GenTextData()
+        void GenTextData()
         {
             byte[] data = TextJson.GetTextBytes();
             int allocSize = (data.Length / 1000 + 1) * 1000;
-            TextDataAddress = Utils.AllocMemory(allocSize);
-            Utils.WriteMemory(TextDataAddress, data);
+            _textDataAddress = Utils.AllocMemory(allocSize);
+            Utils.WriteMemory(_textDataAddress, data);
         }
-        private void GenTextConverter()
+        void GenTextConverter()
         {
-            TextConverterAddress = AllocNearMemory(1000000);
+            _textConverterAddress = AllocNearMemory(1000000);
 
-            IntPtr target = IntPtr.Add(refs["CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()"], 0xAA);
+            IntPtr target = IntPtr.Add(_refs["CParser::Validate(sourceBuffer.Ptr(), sourceBuffer.Term(), true ) == sourceBuffer.Term()"], 0xAA);
             byte[] setTextOpcodeBytes = Utils.ReadMemory(target, 100);
-            TextConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, TextConverterAddress), TextConverterOriginBytes);
-            IntPtr jmpBackAddress = IntPtr.Add(TextConverterDetour.Address, TextConverterDetour.BackupBytes.Count);
+            _textConverterDetour = new(target, setTextOpcodeBytes, GenJmpRelAdrressBytes(target, _textConverterAddress), _textConverterOriginBytes);
+            IntPtr jmpBackAddress = IntPtr.Add(_textConverterDetour.Address, _textConverterDetour.BackupBytes.Count);
 
             ListCodeWriter codeWriter = new();
             Assembler c = new(64);
@@ -254,15 +255,15 @@ namespace BhModule.Lang5
             c.lea(rcx, __qword_ptr[r10 + rcx * 0x2]); // rcx handledCharPtr
             c.mov(__qword_ptr[rcx], si); // save in handledStringPtr
             c.inc(__dword_ptr[handledStringLenPtr]); // handledStringLen + 1
-            c.mov(r11, TextDataAddress.ToInt64()); // coversion data
+            c.mov(r11, _textDataAddress.ToInt64()); // coversion data
             c.test(si, si); // if end ,break
             c.je(eachTextBreak);
-            c.cmp(si, TextJson.cjkStart);
+            c.cmp(si, TextJson.CjkStart);
             c.jb(eachTextContinue);
-            c.cmp(si, TextJson.cjkEnd);
+            c.cmp(si, TextJson.CjkEnd);
             c.ja(eachTextContinue);
             // si current text, rdi current index
-            c.sub(rsi, TextJson.cjkStart); // TextDataAddress[0] is cjkStart, textDataCategoryXIndex = si - TextJson.cjkStart
+            c.sub(rsi, TextJson.CjkStart); // TextDataAddress[0] is cjkStart, textDataCategoryXIndex = si - TextJson.cjkStart
             c.lea(r12, __qword_ptr[r11 + rsi * 0x4]); // currentCategoryOffsetAddress =  TextDataAddress + textDataCategoryXIndex * 4
             c.mov(r12d, __qword_ptr[r12]); // load currentCategoryOffsetAddress
             c.test(r12d, r12d); // currentCategoryOffsetAddress no data
@@ -290,7 +291,7 @@ namespace BhModule.Lang5
             c.pop(rdx);
             c.pop(rcx);
             //c.AddInstruction(Instruction.CreateDeclareByte(TextConverterDetour.BackupBytes.ToArray()));
-            foreach (var item in TextConverterDetour.BackupInstructions)
+            foreach (var item in _textConverterDetour.BackupInstructions)
             {
                 c.AddInstruction(item);
             }
@@ -508,26 +509,26 @@ namespace BhModule.Lang5
             c.Label(ref handledStringPtr);
             c.nop();
 
-            c.Assemble(codeWriter, (ulong)TextConverterAddress.ToInt64());
-            Utils.WriteMemory(TextConverterAddress, [.. codeWriter.data]);
+            c.Assemble(codeWriter, (ulong)_textConverterAddress.ToInt64());
+            Utils.WriteMemory(_textConverterAddress, [.. codeWriter.Data]);
             // Utils.PrintOpcodes(codeWriter.data.ToArray(), IntPtr.Zero);
         }
         public int ReloadConverter()
         {
-            if (!loaded) return 1;
-            IntPtr prepFreeAddr1 = TextDataAddress;
-            IntPtr prepFreeAddr2 = TextConverterAddress;
+            if (!_loaded) return 1;
+            IntPtr prepFreeAddr1 = _textDataAddress;
+            IntPtr prepFreeAddr2 = _textConverterAddress;
 
-            TextConverterDetour.Undo();
+            _textConverterDetour.Undo();
             GenTextData();
             GenTextConverter();
-            if (module.Settings.Cht.Value) TextConverterDetour.Write();
+            if (_module.Settings.Cht.Value) _textConverterDetour.Write();
 
             Utils.FreeMemory(prepFreeAddr1);
             Utils.FreeMemory(prepFreeAddr2);
             return 0;
         }
-        private byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
+        byte[] GenJmpRelAdrressBytes(IntPtr rip, IntPtr target)
         {
             List<byte> list = [0xe9, .. BitConverter.GetBytes((int)(target.ToInt64() - (rip.ToInt64() + 5)))];
             return [.. list];
@@ -537,17 +538,17 @@ namespace BhModule.Lang5
             using var sr = File.OpenText(StateJsonPath);
             var lastLoaded = JsonSerializer.Deserialize<MemServiceJson>(sr.ReadToEnd());
             if (lastLoaded.Key != key) return;
-            CallerAddress = lastLoaded.CallerAddress;
-            TextDataAddress = lastLoaded.TextDataAddress;
-            TextConverterAddress = lastLoaded.TextConverterAddress;
-            LangSetterAddress = lastLoaded.LangSetterAddress;
-            TextConverterDetour = new(
+            _callerAddress = lastLoaded.CallerAddress;
+            _textDataAddress = lastLoaded.TextDataAddress;
+            _textConverterAddress = lastLoaded.TextConverterAddress;
+            _langSetterAddress = lastLoaded.LangSetterAddress;
+            _textConverterDetour = new(
                 lastLoaded.TextConverterDetour.Address,
                 [.. lastLoaded.TextConverterDetour.BackupBytes],
                 [.. lastLoaded.TextConverterDetour.OverwriteBytes],
-                TextConverterOriginBytes
+                _textConverterOriginBytes
                 );
-            CallerDetour = new(
+            _callerDetour = new(
                 lastLoaded.CallerDetour.Address,
                 [.. lastLoaded.CallerDetour.BackupBytes],
                 [.. lastLoaded.CallerDetour.OverwriteBytes]
@@ -558,27 +559,27 @@ namespace BhModule.Lang5
             var lastLoaded = new MemServiceJson()
             {
                 Key = key,
-                CallerAddress = CallerAddress,
-                TextDataAddress = TextDataAddress,
-                TextConverterAddress = TextConverterAddress,
-                LangSetterAddress = LangSetterAddress,
+                CallerAddress = _callerAddress,
+                TextDataAddress = _textDataAddress,
+                TextConverterAddress = _textConverterAddress,
+                LangSetterAddress = _langSetterAddress,
                 TextConverterDetour = new()
                 {
-                    Address = TextConverterDetour.Address,
-                    BackupBytes = [.. TextConverterDetour.BackupBytes],
-                    OverwriteBytes = [.. TextConverterDetour.OverwriteBytes],
+                    Address = _textConverterDetour.Address,
+                    BackupBytes = [.. _textConverterDetour.BackupBytes],
+                    OverwriteBytes = [.. _textConverterDetour.OverwriteBytes],
                 },
                 CallerDetour = new()
                 {
-                    Address = CallerDetour.Address,
-                    BackupBytes = [.. CallerDetour.BackupBytes],
-                    OverwriteBytes = [.. CallerDetour.OverwriteBytes],
+                    Address = _callerDetour.Address,
+                    BackupBytes = [.. _callerDetour.BackupBytes],
+                    OverwriteBytes = [.. _callerDetour.OverwriteBytes],
                 }
             };
             var lastLoadedJson = JsonSerializer.Serialize(lastLoaded);
             File.WriteAllText(StateJsonPath, lastLoadedJson);
         }
-        private IntPtr AllocNearMemory(int size)
+        IntPtr AllocNearMemory(int size)
         {
             var stopwatch = Stopwatch.StartNew();
             var mainModule = GameService.GameIntegration.Gw2Instance.Gw2Process.MainModule;
@@ -598,32 +599,31 @@ namespace BhModule.Lang5
     }
     public class FuncBuffer
     {
-        public IntPtr address;
-        public long arg0;
-        public long arg1;
-        public long arg2;
-        public long arg3;
+        public IntPtr Address;
+        public long Arg0;
+        public long Arg1;
+        public long Arg2;
+        public long Arg3;
         public byte[] Bytes
         {
             get
             {
                 return [
-                    .. BitConverter.GetBytes(address.ToInt64()),
-                    .. BitConverter.GetBytes(arg0),
-                    .. BitConverter.GetBytes(arg1),
-                    .. BitConverter.GetBytes(arg2),
-                    .. BitConverter.GetBytes(arg3),
+                    .. BitConverter.GetBytes(Address.ToInt64()),
+                    .. BitConverter.GetBytes(Arg0),
+                    .. BitConverter.GetBytes(Arg1),
+                    .. BitConverter.GetBytes(Arg2),
+                    .. BitConverter.GetBytes(Arg3),
                 ];
             }
         }
     }
     public static class TextJson
     {
-        public const int cjkStart = 0x4E00;
-        public const int cjkEnd = 0x9FFF;
+        public const int CjkStart = 0x4E00;
+        public const int CjkEnd = 0x9FFF;
         public static byte[] GetTextBytes()
         {
-
             // jianfan.json edited from https://github.com/kfcd/fanjian, appreciate kfcd.
             // LICENSE http://creativecommons.org/licenses/by/3.0/deed.zh_TW
             TextJsonItem[] data = Utils.GetJson<TextJsonItem[]>("jianfan.json");
@@ -652,7 +652,7 @@ namespace BhModule.Lang5
             [JsonPropertyName("i")]
             public string In { get; set; }
         }
-        private class TextDataItem
+        class TextDataItem
         {
             public readonly string In;
             public readonly string Out;
@@ -664,9 +664,9 @@ namespace BhModule.Lang5
             {
                 this.In = In;
                 this.Out = Out;
-                this.InLength = In.Length;
-                this.OutLength = Out.Length;
-                this.CategoryKey = InLength == 0 ? (ushort)0 : BitConverter.ToUInt16(BitConverter.GetBytes(In[InLength - 1]), 0);
+                InLength = In.Length;
+                OutLength = Out.Length;
+                CategoryKey = InLength == 0 ? (ushort)0 : BitConverter.ToUInt16(BitConverter.GetBytes(In[InLength - 1]), 0);
 
                 /*
                     struct {
@@ -677,20 +677,20 @@ namespace BhModule.Lang5
                     };
                  */
                 System.Text.Encoding unicodeEncoding = System.Text.Encoding.Unicode;
-                List<byte> bytes = [.. BitConverter.GetBytes(this.InLength)];
-                byte[] inBytes = unicodeEncoding.GetBytes(this.In);
+                List<byte> bytes = [.. BitConverter.GetBytes(InLength)];
+                byte[] inBytes = unicodeEncoding.GetBytes(In);
                 bytes.AddRange(inBytes);
-                bytes.AddRange(BitConverter.GetBytes(this.OutLength));
-                byte[] outBytes = unicodeEncoding.GetBytes(this.Out);
+                bytes.AddRange(BitConverter.GetBytes(OutLength));
+                byte[] outBytes = unicodeEncoding.GetBytes(Out);
                 bytes.AddRange(outBytes);
 
-                this.Bytes = [.. bytes];
+                Bytes = [.. bytes];
             }
         }
-        private class TextDataCategory(ushort key)
+        class TextDataCategory(ushort key)
         {
             public static IReadOnlyList<TextDataCategory> All => _all;
-            private readonly static List<TextDataCategory> _all = [];
+            readonly static List<TextDataCategory> _all = [];
             public readonly ushort Key = key;
             public List<TextDataItem> List = [];
             public int Size => List.Count;
@@ -698,7 +698,7 @@ namespace BhModule.Lang5
             {
                 get
                 {
-                    List<byte> bytes = [.. BitConverter.GetBytes(this.Size)];
+                    List<byte> bytes = [.. BitConverter.GetBytes(Size)];
                     foreach (var item in List)
                     {
                         bytes.AddRange(item.Bytes);
@@ -728,9 +728,9 @@ namespace BhModule.Lang5
                 _all.Clear();
             }
         }
-        private class TextDataCollection
+        class TextDataCollection
         {
-            private int DataAddressOffset => (cjkEnd - cjkStart + 1) * sizeof(int);
+            int DataAddressOffset => (CjkEnd - CjkStart + 1) * sizeof(int);
             public readonly byte[] Bytes;
             public TextDataCollection(TextJsonItem[] source)
             {
@@ -746,8 +746,8 @@ namespace BhModule.Lang5
                 List<byte> dataBytes = [];
                 foreach (var category in TextDataCategory.All)
                 {
-                    int mapBytesIndex = (category.Key - cjkStart) * sizeof(int);
-                    if (mapBytesIndex < 0 || category.Key > cjkEnd) continue;
+                    int mapBytesIndex = (category.Key - CjkStart) * sizeof(int);
+                    if (mapBytesIndex < 0 || category.Key > CjkEnd) continue;
                     byte[] categoryOffsetBytes = BitConverter.GetBytes(DataAddressOffset + dataBytes.Count);
                     Array.Copy(categoryOffsetBytes, 0, mapBytes, mapBytesIndex, categoryOffsetBytes.Length);
                     dataBytes.AddRange(category.Bytes);
